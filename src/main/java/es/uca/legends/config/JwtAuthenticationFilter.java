@@ -48,8 +48,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
-            // 4. Si el token es válido, actualizamos el contexto de seguridad
-            // OJO: Aquí hacemos casting a (User) porque tu método espera tu entidad User, no UserDetails
             if (jwtService.isTokenValid(jwt, (es.uca.legends.entities.User) userDetails)) {
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,

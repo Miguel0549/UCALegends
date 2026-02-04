@@ -29,6 +29,9 @@ public class User implements UserDetails {
     @Column(name = "Role")
     private String role;
 
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Player player;
+
     @Override
     @NonNull
     public Collection<? extends GrantedAuthority> getAuthorities() {
