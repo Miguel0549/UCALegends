@@ -25,6 +25,7 @@ public class AuthenticationService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final TokenRepository tokenRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public AuthenticationResponse register(AuthenticationRequest request) {
@@ -75,6 +76,23 @@ public class AuthenticationService {
                 .build();
     }
 
+    public AuthenticationResponse refresh(String RefreshToken){
+
+        Token refreshJwT = tokenRepository.findByJwtToken(RefreshToken).orElseThrow();
+
+        if (refreshJwT.tipo != Token.TokenType.REFRESH)
+            throw new RuntimeException("Tipo de Token invalido.");
+
+        if (refreshJwT.expirado || refreshJwT.revocado)
+            throw new RuntimeException("Token invalido.");
+
+        String accessToken = jwtService.generateToken(refreshJwT.user);
+
+        saveUserToken(refreshJwT.user,accessToken);
+
+        return new AuthenticationResponse(accessToken,RefreshToken);
+    }
+
     private void saveUserToken(User user, String jwtToken) {
 
         Date expirationDate = jwtService.extraerExpiracion(jwtToken);
@@ -109,13 +127,12 @@ public class AuthenticationService {
         tokenRepository.save(token);
     }
 
-    private void revokeAllUserTokens(User user) {
+    public void revokeAllUserTokens(User user) {
         var validUserTokens = tokenRepository.findAllValidTokenByUser(user.getId());
         if (validUserTokens.isEmpty())
             return;
 
         validUserTokens.forEach(token -> {
-            token.setExpirado(true);
             token.setRevocado(true);
         });
         tokenRepository.saveAll(validUserTokens);

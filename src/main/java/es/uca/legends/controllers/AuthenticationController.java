@@ -1,6 +1,7 @@
 package es.uca.legends.controllers;
 import es.uca.legends.dtos.AuthenticationRequest;
 import es.uca.legends.dtos.AuthenticationResponse;
+import es.uca.legends.dtos.RefreshTokenRequest;
 import es.uca.legends.services.AuthenticationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,4 +30,12 @@ public class AuthenticationController {
     ) {
         return ResponseEntity.ok(service.authenticate(request));
     }
+
+    @PostMapping("/refresh-token")
+    public ResponseEntity<AuthenticationResponse> refreshToken(
+            @RequestBody RefreshTokenRequest request
+    ){
+        return ResponseEntity.ok(service.refresh(request.getRefreshToken()));
+    }
+
 }
