@@ -16,7 +16,7 @@ public class TeamController {
 
     private final TeamService teamService;
 
-    @PostMapping
+    @PostMapping("/create")
     public ResponseEntity<?> createTeam(@AuthenticationPrincipal User user, @RequestBody CreateTeamRequest request)
     {
         try {
@@ -27,7 +27,7 @@ public class TeamController {
         }
     }
 
-    @DeleteMapping("/members/{playerId}")
+    @DeleteMapping("/kick/{playerId}")
     public ResponseEntity<?> kickPlayer(@AuthenticationPrincipal User user, @PathVariable Long playerId)
     {
         try {
@@ -38,9 +38,7 @@ public class TeamController {
         }
     }
 
-    // Endpoint para borrar el equipo entero
-    // Ejemplo: DELETE /api/teams
-    @DeleteMapping
+    @DeleteMapping("/delete")
     public ResponseEntity<?> deleteTeam(@AuthenticationPrincipal User user) {
         try {
             teamService.deleteTeam(user);
@@ -61,8 +59,6 @@ public class TeamController {
         }
     }
 
-    // SALIR DEL EQUIPO
-    // Ejemplo: POST /api/teams/leave
     @PostMapping("/leave")
     public ResponseEntity<?> leaveTeam(@AuthenticationPrincipal User user)
     {
@@ -74,8 +70,6 @@ public class TeamController {
         }
     }
 
-    // TRASPASAR LIDERAZGO
-    // Ejemplo: PUT /api/teams/leader/25 (donde 25 es el ID del Player nuevo líder)
     @PutMapping("/leader/{newLeaderPlayerId}")
     public ResponseEntity<?> transferLeadership(@AuthenticationPrincipal User user, @PathVariable Long newLeaderPlayerId)
     {

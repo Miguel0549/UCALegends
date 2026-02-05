@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 
 @Entity
 @Table(name = "Tournaments")
@@ -33,5 +35,11 @@ public class Tournament {
 
     @Column(name = "MaxTeams")
     private Integer maxTeams;
+
+    @Column(name="FechaInscripciones")
+    private LocalDateTime fechaInscripciones;
+
+    @Column(name = "FechaInicio")
+    private LocalDateTime fechaInicio;
 
 }

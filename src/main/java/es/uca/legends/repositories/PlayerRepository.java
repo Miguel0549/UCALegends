@@ -13,4 +13,6 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
     Optional<Player> findByRiotIdNameAndRiotIdTag(String riotIdName, String riotIdTag);
 
     List<Player> findByRegion(String region);
+
+    Long countByTeamId(Long teamId);
 }

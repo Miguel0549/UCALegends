@@ -132,13 +132,8 @@ public class TeamService {
             throw new RuntimeException("Solo el líder puede disolver el equipo.");
         }
 
-        for (Player member : team.getMembers()) {
-            member.setTeam(null);
-            playerRepository.save(member);
-        }
-
-        // (Opcional) Si la lista 'members' es Lazy y da problemas, usa una Query en el repo:
-        // playerRepository.updateTeamToNullByTeamId(team.getId());
+        leaderPlayer.setTeam(null);
+        playerRepository.save(leaderPlayer);
 
         teamRepository.delete(team);
     }
