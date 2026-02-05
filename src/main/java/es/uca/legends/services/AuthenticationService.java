@@ -30,6 +30,9 @@ public class AuthenticationService {
     @Transactional
     public AuthenticationResponse register(AuthenticationRequest request) {
 
+        if ( userRepository.existsByEmail(request.getEmail()))
+            throw new RuntimeException("El email ya esta en uso");
+
         var user = User.builder()
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
