@@ -36,6 +36,9 @@ public class Tournament {
     @Column(name = "MaxTeams")
     private Integer maxTeams;
 
+    @Column(name = "CurrentRound")
+    private int currentRound = 0;
+
     @Column(name="FechaInscripciones")
     private LocalDateTime fechaInscripciones;
 

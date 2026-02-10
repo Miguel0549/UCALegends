@@ -38,6 +38,9 @@ public class Match {
     @Column(name = "RiotMatchId",unique = true)
     private String riotMatchId;
 
+    @Column(name = "Round")
+    private Integer round;
+
     @Column(name = "DurationSec")
     private Integer durationSec;
 

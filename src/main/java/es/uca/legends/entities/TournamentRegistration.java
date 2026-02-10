@@ -30,4 +30,7 @@ public class TournamentRegistration {
     @Column(name = "RegisteredAt")
     private LocalDateTime registeredAt;
 
+    @Column(name = "HasReceivedBye")
+    private Boolean hasReceivedBye;
+
 }

@@ -1,6 +1,7 @@
 package es.uca.legends.services;
 
 import es.uca.legends.entities.*;
+import es.uca.legends.repositories.MatchRepository;
 import es.uca.legends.repositories.PlayerRepository;
 import es.uca.legends.repositories.TournamentRegistrationRepository;
 import es.uca.legends.repositories.TournamentRepository;
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +20,8 @@ public class TournamentService {
     private final TournamentRepository tournamentRepository;
     private final TournamentRegistrationRepository registrationRepository;
     private final PlayerRepository playerRepository;
+    private final MatchRepository matchRepository;
+    private final MatchmakingService matchmakingService;
 
     @Transactional
     public Tournament createTournament(Tournament tournament) {
@@ -67,11 +72,7 @@ public class TournamentService {
             throw new RuntimeException("El torneo no admite inscripciones (Estado: " + tournament.getStatus() + ").");
         }
 
-        if (tournament.getFechaInscripciones() != null && LocalDateTime.now().isBefore(tournament.getFechaInscripciones())) {
-            throw new RuntimeException("El plazo de inscripción no ha empezado, vuelve a intentarlo en :" + tournament.getFechaInscripciones());
-        }
-
-        if (tournament.getFechaInscripciones() != null && LocalDateTime.now().isAfter(tournament.getFechaInscripciones().plusDays(5))) {
+        if (tournament.getFechaInscripciones() != null && LocalDateTime.now().isAfter(tournament.getFechaInscripciones())) {
             throw new RuntimeException("El plazo de inscripción finalizó el " + tournament.getFechaInscripciones());
         }
 
@@ -146,5 +147,70 @@ public class TournamentService {
 
         tournament.setStatus(newStatus);
         tournamentRepository.save(tournament);
+    }
+
+    @Transactional
+    public void advanceToNextRound(Long tournamentId) {
+        Tournament tournament = tournamentRepository.findById(tournamentId)
+                .orElseThrow(() -> new RuntimeException("Torneo no encontrado"));
+
+        // 1. Validar que la ronda actual ha terminado
+        if (tournament.getCurrentRound() > 0) {
+            boolean unfinishedMatches = matchRepository.existsByTournamentAndRoundAndStatusNot(
+                    tournament,
+                    tournament.getCurrentRound(),
+                    "FINISHED"
+            );
+
+            if (unfinishedMatches) {
+                throw new RuntimeException("No se puede avanzar de ronda: Aún hay partidos pendientes.");
+            }
+        }
+
+        // 2. Obtener los ganadores de la ronda actual (para pasarlos a la siguiente)
+        List<Team> winners;
+
+        if (tournament.getCurrentRound() == 0) {
+            // CASO ESPECIAL: Si es la ronda 0, pasamos a Ronda 1 con TODOS los inscritos
+            winners = registrationRepository.findTeamsByTournamentId(tournamentId);
+            tournament.setStatus("EN_CURSO");
+        } else {
+            // CASO NORMAL: Buscamos los ganadores de la ronda que acaba de terminar
+            winners = getWinnersOfRound(tournament, tournament.getCurrentRound());
+
+            // Si solo queda 1 ganador, ¡El torneo ha terminado!
+            if (winners.size() == 1) {
+                tournament.setStatus("FINALIZADO");
+                tournamentRepository.save(tournament);
+                // Aquí podrías guardar quién ganó el torneo
+                return;
+            }
+        }
+
+        // 3. Incrementar ronda
+        int nextRound = tournament.getCurrentRound() + 1;
+        tournament.setCurrentRound(nextRound);
+
+        // 4. Generar los cruces usando tu MatchmakingService
+        matchmakingService.generateMatches(tournament, winners, nextRound);
+
+        tournamentRepository.save(tournament);
+    }
+
+    // Método auxiliar para obtener ganadores
+    private List<Team> getWinnersOfRound(Tournament tournament, int round) {
+        List<Match> matches = matchRepository.findByTournamentAndRound(tournament, round);
+        List<Team> winners = new ArrayList<>();
+
+        for (Match m : matches) {
+            if (m.getWinner() != null) {
+                winners.add(m.getWinner());
+            } else {
+                // Esto no debería pasar si validamos unfinishedMatches antes,
+                // pero por seguridad lanzamos error.
+                throw new RuntimeException("Error crítico: El partido " + m.getId() + " no tiene ganador.");
+            }
+        }
+        return winners;
     }
 }

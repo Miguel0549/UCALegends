@@ -25,6 +25,12 @@ public class Team {
     @Column(name = "Region")
     private String region;
 
+    @Column(name = "AverageScore")
+    private Double averageScore;
+
+    @Column(name = "Division")
+    private String division; // Valores posibles: "I", "II", "III"
+
     @OneToOne
     @JoinColumn(name = "LeaderId")
     private Player leader;
