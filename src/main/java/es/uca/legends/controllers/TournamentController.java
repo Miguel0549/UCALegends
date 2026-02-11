@@ -1,7 +1,9 @@
 package es.uca.legends.controllers;
 
+import es.uca.legends.dtos.TournamentHistoryDto;
 import es.uca.legends.entities.Tournament;
 import es.uca.legends.entities.User;
+import es.uca.legends.repositories.TournamentRepository;
 import es.uca.legends.services.TournamentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -9,12 +11,42 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/tournaments")
 @RequiredArgsConstructor
 public class TournamentController {
 
+    private final TournamentRepository tournamentRepository;
     private final TournamentService tournamentService;
+
+    // --- General ---
+
+    @GetMapping("/")
+    public ResponseEntity<List<Tournament>> getAllTournaments() {
+
+        return ResponseEntity.ok(tournamentRepository.findAll());
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<List<TournamentHistoryDto>> getHistory(@RequestParam String region) {
+        try {
+            // Ejemplo de llamada: GET /api/tournaments/history?region=EUW
+            return ResponseEntity.ok(tournamentService.getTournamentHistory(region));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getTournamentById(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(tournamentRepository.findById(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
 
     // --- ADMIN ---
 

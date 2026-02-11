@@ -15,4 +15,5 @@ public interface MatchRepository extends JpaRepository<Match,Long> {
     List<Match> findByTournamentAndRound(Tournament tournament, int round);
 
     Boolean existsByTournamentAndRoundAndStatusNot(Tournament tournament, int round, String status);
+    List<Match> findByTournamentAndRound(Tournament t , Integer r);
 }

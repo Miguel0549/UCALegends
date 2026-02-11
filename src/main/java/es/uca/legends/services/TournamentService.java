@@ -1,5 +1,6 @@
 package es.uca.legends.services;
 
+import es.uca.legends.dtos.TournamentHistoryDto;
 import es.uca.legends.entities.*;
 import es.uca.legends.repositories.MatchRepository;
 import es.uca.legends.repositories.PlayerRepository;
@@ -67,6 +68,10 @@ public class TournamentService {
 
         Tournament tournament = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new RuntimeException("Torneo no encontrado."));
+
+        if ( !tournament.getRegion().equals(team.getRegion())){
+            throw new RuntimeException("El equipo debe pertenecer a la region " + tournament.getRegion() + " para poder inscribirte en este torneo");
+        }
 
         if (!"ABIERTO".equals(tournament.getStatus())) {
             throw new RuntimeException("El torneo no admite inscripciones (Estado: " + tournament.getStatus() + ").");
@@ -181,8 +186,12 @@ public class TournamentService {
             // Si solo queda 1 ganador, ¡El torneo ha terminado!
             if (winners.size() == 1) {
                 tournament.setStatus("FINALIZADO");
+
+                // --- NUEVO: Guardamos al ganador ---
+                tournament.setWinner(winners.getFirst());
+                // -----------------------------------
+
                 tournamentRepository.save(tournament);
-                // Aquí podrías guardar quién ganó el torneo
                 return;
             }
         }
@@ -212,5 +221,28 @@ public class TournamentService {
             }
         }
         return winners;
+    }
+
+    public List<Match> getCurrentRoundMatches(Long tournamentId) {
+        Tournament t = tournamentRepository.findById(tournamentId)
+                .orElseThrow(() -> new RuntimeException("Torneo no encontrado"));
+
+        return matchRepository.findByTournamentAndRound(t, t.getCurrentRound());
+    }
+
+    public List<TournamentHistoryDto> getTournamentHistory(String region) {
+        // Buscamos solo los FINALIZADOS de esa región
+        List<Tournament> tournaments = tournamentRepository.findByStatusAndRegion("FINALIZADO", region);
+
+        // Convertimos la lista de Entidades a lista de DTOs
+        return tournaments.stream()
+                .map(t -> TournamentHistoryDto.builder()
+                        .tournamentName(t.getName())
+                        .fechaInicio(t.getFechaInicio())
+                        .region(t.getRegion())
+                        // Usamos un ternario por seguridad (si winner fuera null por algún bug antiguo)
+                        .winnerName(t.getWinner() != null ? t.getWinner().getName() : "Sin Ganador")
+                        .build())
+                .toList();
     }
 }

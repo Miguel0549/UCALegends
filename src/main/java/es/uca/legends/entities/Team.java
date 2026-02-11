@@ -1,4 +1,5 @@
 package es.uca.legends.entities;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import java.util.List;
@@ -33,9 +34,10 @@ public class Team {
 
     @OneToOne
     @JoinColumn(name = "LeaderId")
+    @JsonIgnoreProperties("team")
     private Player leader;
 
-    @OneToMany(mappedBy = "team", fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "team", fetch = FetchType.EAGER)
     @ToString.Exclude
     private List<Player> members;
 

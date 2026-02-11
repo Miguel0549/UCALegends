@@ -1,5 +1,6 @@
 package es.uca.legends.entities;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -46,6 +47,7 @@ public class Player {
 
     @OneToOne
     @JoinColumn(name = "UserId", nullable = false)
+    @JsonIgnore
     private User user;
 
     @ManyToOne

@@ -5,9 +5,10 @@ import lombok.Data;
 public class DevPLayerLinkRequest {
     private String gameName;
     private String tagLine;
+    private String region;
     private Integer summonerLevel;
     private String tier;
     private String division;
     private Integer leaguePoints;
-    private Integer iconId;
+    private Integer profileIconId;
 }

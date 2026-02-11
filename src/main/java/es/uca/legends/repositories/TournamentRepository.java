@@ -16,4 +16,7 @@ public interface TournamentRepository extends JpaRepository<Tournament,Long> {
     List<Tournament> findAllByStatusAndFechaInscripcionesBefore(String status, LocalDateTime now);
     List<Tournament> findAllByStatusAndFechaInicioBefore(String status, LocalDateTime now);
 
+    List<Tournament> findByStatusAndRegion(String status, String region);
+    List<Tournament> findByStatus(String status);
+
 }

@@ -26,10 +26,11 @@ public class PlayerService {
         String gameName = request.getGameName();
         String tagLine = request.getTagLine();
         Integer summonerLevel = request.getSummonerLevel();
+        String region = request.getRegion();
         String tier = request.getTier();
         String division = request.getDivision();
         Integer leaguePoints = request.getLeaguePoints();
-        Integer iconId = request.getIconId();
+        Integer iconId = request.getProfileIconId();
 
 
         // PUUID simulado
@@ -39,7 +40,7 @@ public class PlayerService {
                 .riotIdName(gameName)
                 .riotIdTag(tagLine)
                 .puuid(mockPuuid)
-                .region("EUW")
+                .region(region)
                 .summonerLevel(summonerLevel)
                 .tier(tier)
                 .division(division)

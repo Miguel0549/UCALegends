@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 @Service
@@ -35,10 +37,14 @@ public class TeamService {
             throw new RuntimeException("Ya existe un equipo con ese nombre.");
         }
 
+        List<Player> lider = new ArrayList<>();
+        lider.add(currentPlayer);
+
         Team newTeam = Team.builder()
                 .name(request.getName())
                 .tag(request.getTag())
                 .region(request.getRegion())
+                .members(lider)
                 .leader(currentPlayer) // Asignamos líder
                 .build();
 
@@ -66,10 +72,20 @@ public class TeamService {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new RuntimeException("El equipo no existe."));
 
+        if ( !currentPlayer.getRegion().equals(team.getRegion())){
+            throw new RuntimeException("Debes pertenecer a la region " + team.getRegion() + " para ingresar en este equipo");
+        }
+
         if (team.getMembers().size() >= 5) throw new RuntimeException("Equipo lleno");
 
         currentPlayer.setTeam(team);
         playerRepository.save(currentPlayer);
+
+        if (team.getMembers() == null) {
+            team.setMembers(new ArrayList<>());
+        }
+        team.getMembers().add(currentPlayer);
+
         updateTeamDivision(team);
     }
 
@@ -174,27 +190,36 @@ public class TeamService {
 
         if (members == null || members.isEmpty()) {
             team.setDivision("III");
-            return team;
+        }else{
+
+            double totalScore = 0;
+            int count = 0;
+
+            System.out.println("-----------------------------------------------------------------------");
+
+            for (Player p : members) {
+                double puntosJugador = getTierValue(p.getTier()) + getDivisionValue(p.getDivision()) + (0.002 * p.getLeaguePoints());
+                System.out.println("Puntuacion " + p.getRiotIdName() + ": " + puntosJugador );
+                totalScore += puntosJugador;
+                count++;
+            }
+
+
+            double average = (count > 0) ? totalScore / count : 0;
+            System.out.println("Puntuacion Total : " + totalScore + " / " + count + "= " + average );
+            System.out.println("-----------------------------------------------------------------------");
+            team.setAverageScore(average);
+
+            if (average <= 4.0) { // Hierro, Bronce, Plata, Oro
+                team.setDivision("III");
+            } else if (average <= 7.0) { // Platino, Esmeralda, Diamante
+                team.setDivision("II");
+            } else { // Master, GM, Challenger
+                team.setDivision("I");
+            }
         }
 
-        double totalScore = 0;
-        int count = 0;
 
-        for (Player p : members) {
-            totalScore += getTierValue(p.getTier());
-            count++;
-        }
-
-        double average = (count > 0) ? totalScore / count : 0;
-        team.setAverageScore(average);
-
-        if (average <= 4.0) { // Hierro, Bronce, Plata, Oro
-            team.setDivision("III");
-        } else if (average <= 7.0) { // Platino, Esmeralda, Diamante
-            team.setDivision("II");
-        } else { // Master, GM, Challenger
-            team.setDivision("I");
-        }
 
         return teamRepository.save(team);
     }
@@ -202,19 +227,33 @@ public class TeamService {
     private int getTierValue(String tier) {
         if (tier == null) return 0; // Unranked cuenta como 0
 
-        switch (tier.toUpperCase()) {
-            case "IRON":        return 1;
-            case "BRONZE":      return 2;
-            case "SILVER":      return 3;
-            case "GOLD":        return 4;
-            case "PLATINUM":    return 5;
-            case "EMERALD":     return 6; // OJO: Emerald existe en LoL moderno
-            case "DIAMOND":     return 7;
-            case "MASTER":      return 8;
-            case "GRANDMASTER": return 9;
-            case "CHALLENGER":  return 10;
-            default:            return 0; // Unranked
-        }
+        return switch (tier.toUpperCase()) {
+            case "IRON" -> 1;
+            case "BRONZE" -> 2;
+            case "SILVER" -> 3;
+            case "GOLD" -> 4;
+            case "PLATINUM" -> 5;
+            case "EMERALD" -> 6; // OJO: Emerald existe en LoL moderno
+            case "DIAMOND" -> 7;
+            case "MASTER" -> 8;
+            case "GRANDMASTER" -> 9;
+            case "CHALLENGER" -> 10;
+            default -> 0; // Unranked
+        };
+    }
+
+
+    private double getDivisionValue(String division){
+
+        if (division == null ) return 0;
+
+        return switch (division.toUpperCase()) {
+            case "IV" -> 0.2;
+            case "III" -> 0.4;
+            case "II" -> 0.6;
+            case "I" -> 0.8;
+            default -> 0;
+        };
     }
 
 }

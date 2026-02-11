@@ -45,4 +45,8 @@ public class Tournament {
     @Column(name = "FechaInicio")
     private LocalDateTime fechaInicio;
 
+    @ManyToOne
+    @JoinColumn(name = "WinnerId")
+    private Team winner;
+
 }
