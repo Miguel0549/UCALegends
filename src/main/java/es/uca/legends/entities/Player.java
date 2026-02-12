@@ -3,11 +3,14 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
+import org.apache.commons.lang3.builder.HashCodeExclude;
 
 
 @Entity
 @Table(name="Players")
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -16,6 +19,7 @@ public class Player {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "ID")
+    @EqualsAndHashCode.Include
     private Long id;
 
     @Column(name = "PUUID", unique = true)
@@ -47,13 +51,13 @@ public class Player {
 
     @OneToOne
     @JoinColumn(name = "UserId", nullable = false)
-    @JsonIgnore
+    @ToString.Exclude
     private User user;
 
     @ManyToOne
     @JoinColumn(name = "TeamId")
+    @JsonIgnoreProperties({"members", "leader"})
     @ToString.Exclude
-    @JsonIgnore
     private Team team;
 
 }

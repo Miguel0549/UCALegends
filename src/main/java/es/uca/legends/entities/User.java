@@ -11,7 +11,9 @@ import java.util.List;
 
 @Entity
 @Table(name = "Users")
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -20,6 +22,7 @@ public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "ID")
+    @EqualsAndHashCode.Include
     private Long id;
 
     @Column(name = "Email",unique = true)

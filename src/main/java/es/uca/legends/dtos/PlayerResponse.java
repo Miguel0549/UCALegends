@@ -1,4 +1,5 @@
 package es.uca.legends.dtos;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import es.uca.legends.entities.Team;
 import lombok.Data;
 
@@ -15,5 +16,5 @@ public class PlayerResponse {
     private String division;
     private Integer leaguePoints;
     private Integer profileIconId;
-    private TeamResponseDto team;
+    private Team team;
 }

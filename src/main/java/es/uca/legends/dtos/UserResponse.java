@@ -10,6 +10,6 @@ public class UserResponse {
     private String email;
     private String passwordHash;
     private String role;
-    private PlayerResponse player;
+    private Player player;
 
 }

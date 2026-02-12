@@ -83,114 +83,16 @@ class _ProfileViewState extends State<ProfileView> {
 
   // --- VISTA PERFIL COMPLETO ---
   Widget _buildPlayerProfile(Map<String, dynamic> player) {
-    String name = player['riotIdName'] ?? "Unknown";
-    String tag = player['riotIdTag'] ?? "EUW";
-    String region = player['region'] ?? "EUW";
-    int level = player['summonerLevel'] ?? 1;
-    String tier = player['tier'] ?? "UNRANKED"; // Ej: GOLD
-    String division = player['division'] ?? ""; // Ej: IV
-    int lp = player['leaguePoints'] ?? 0;
-
-    // Obtenemos los estilos dinámicos
-    Color rankColor = _getRankColor(tier);
-    Gradient bgGradient = _getRankGradient(tier);
-    String rankImgUrl = _getRankImageUrl(tier);
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          // --- AVATAR Y CABECERA ---
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: rankColor, width: 3), // Borde cambia según rango
-            ),
-            child: CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.grey[900],
-              child: const Icon(Icons.person, size: 50, color: Colors.white),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "$name #$tag",
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              "$region • Nivel $level",
-              style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
-            ),
-          ),
-
-          const SizedBox(height: 30),
-
-          // --- TARJETA DE RANGO DINÁMICA ---
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                gradient: bgGradient, // <--- DEGRADADO DINÁMICO
-                border: Border.all(color: rankColor.withOpacity(0.5)), // <--- BORDE DINÁMICO
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
-                ]
-            ),
-            child: Row(
-              children: [
-                // IMAGEN DEL RANGO (Desde Internet)
-                SizedBox(
-                  width: 100,
-                  height: 100,
-                  child: Image.network(
-                    rankImgUrl,
-                    fit: BoxFit.contain,
-                    // Si falla la carga (internet lento), mostramos un escudo por defecto
-                    errorBuilder: (context, error, stackTrace) =>
-                        Icon(Icons.shield, size: 80, color: rankColor),
-                  ),
-                ),
-
-                const SizedBox(width: 20),
-
-                // TEXTOS
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("CLASIFICATORIA FLEXIBLE", style: TextStyle(fontSize: 10, color: Colors.grey, letterSpacing: 1.5)),
-                      const SizedBox(height: 5),
-                      Text(
-                        tier,
-                        style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: rankColor, // <--- TEXTO COLOR RANGO
-                            fontStyle: FontStyle.italic
-                        ),
-                      ),
-                      Text(
-                        "$division • $lp LP",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                )
-              ],
-            ),
-          ),
+          // 1. REUTILIZAMOS LA TARJETA VISUAL
+          PlayerInfoCard(player: player),
 
           const SizedBox(height: 40),
 
-          // --- BOTONES (Sin cambios) ---
+          // 2. AÑADIMOS LOS BOTONES DE GESTIÓN (Solo para ti)
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -789,7 +691,7 @@ class _TeamViewState extends State<TeamView> {
 
         // CASO 2: TIENE JUGADOR Y TIENE EQUIPO
         if (team != null) {
-          return _buildMyTeamDetails(team, player['id']); // Pasamos mi ID para saber si soy líder
+          return _buildMyTeamDetails(team, player['id'],() => _refreshData()); // Pasamos mi ID para saber si soy líder
         }
 
         // CASO 3: TIENE JUGADOR PERO NO EQUIPO (BUSCADOR)
@@ -840,33 +742,28 @@ class _TeamViewState extends State<TeamView> {
   }
 
   // --- WIDGET CASO 2: MI EQUIPO (DETALLES E INTEGRANTES) ---
-  Widget _buildMyTeamDetails(Map<String, dynamic> team, int myPlayerId) {
-    // Si la lista de miembros no viene cargada por el @JsonIgnoreProperties del Player,
-    // hacemos una llamada extra o confiamos en que el backend ahora (con los cambios en Team.java)
-    // nos envíe los miembros cuando consultamos el equipo.
-    // Asumiremos que al hacer /users/me -> player -> team, el team trae 'members' gracias a quitar el @JsonIgnore.
-
-    List<dynamic> members = team['members'] ?? [];
-    bool amILeader = team['leader'] != null && team['leader']['id'] == myPlayerId;
+  Widget _buildMyTeamDetails(Map<String, dynamic> team, int myPlayerId,VoidCallback onRefresh) {
+    int teamId = team['id'];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
           const SizedBox(height: 20),
-          // Cabecera Equipo
+
+          // --- 1. CABECERA DEL EQUIPO (Siempre visible) ---
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: const Color(0xFF1E2328),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFC9AA71)), // Borde Dorado
+              border: Border.all(color: const Color(0xFFC9AA71)),
             ),
             child: Column(
               children: [
                 const Icon(Icons.shield, size: 60, color: Color(0xFFD32F2F)),
                 const SizedBox(height: 10),
-                Text(team['name'], style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                Text(team['name'], style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
                 Text("Tag: [${team['tag']}]", style: const TextStyle(fontSize: 18, color: Color(0xFFC9AA71), fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 Row(
@@ -881,92 +778,209 @@ class _TeamViewState extends State<TeamView> {
             ),
           ),
 
-          const SizedBox(height: 30),
-          const Align(alignment: Alignment.centerLeft, child: Text("ROSTER", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.5))),
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
 
-          // Lista de Integrantes
-          ListView.builder(
-            shrinkWrap: true, // Importante dentro de SingleChildScrollView
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: members.length,
-            itemBuilder: (context, index) {
-              final m = members[index];
-              bool isLeader = m['leader'] == true;
+          // --- 2. CARGAMOS MIEMBROS Y CALCULAMOS LIDERAZGO ---
+          FutureBuilder<List<dynamic>>(
+            future: ApiService.getTeamMembers(teamId),
+            builder: (context, snapshot) {
 
-              return Card(
-                color: const Color(0xFF1E2328),
-                margin: const EdgeInsets.symmetric(vertical: 4), // Un poco de separación
-                child: ListTile(
-                  // --- CAMBIO AQUÍ: USAMOS EL COLOR DINÁMICO ---
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: _getRankColor(m['tier']), // Borde del color del rango
-                          width: 2
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        m['riotIdName'] != null ? m['riotIdName'].substring(0, 1).toUpperCase() : "?",
-                        style: TextStyle(
-                            color: _getRankColor(m['tier']), // Letra del color del rango
-                            fontWeight: FontWeight.bold
+              // A) Mientras carga o si hay error
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Color(0xFFC9AA71)));
+              }
+              if (snapshot.hasError) return const Text("Error cargando roster", style: TextStyle(color: Colors.red));
+
+              final members = snapshot.data ?? [];
+
+              // B) CALCULAMOS SI SOY EL LÍDER MIRANDO LA LISTA
+              // Buscamos si hay algún miembro que sea YO (por ID) y que tenga flag de leader
+              bool amILeader = false;
+              try {
+                final meInTeam = members.firstWhere(
+                        (m) => m['id'] == myPlayerId,
+                    orElse: () => null
+                );
+                if (meInTeam != null) {
+                  // Comprobamos ambas claves por si Jackson cambia el nombre
+                  amILeader = meInTeam['leader'] == true || meInTeam['isLeader'] == true;
+                }
+              } catch (e) {
+                print("Error calculando líder: $e");
+              }
+
+              return Column(
+                children: [
+
+                  // --- 3. BOTÓN DE GESTIÓN (Solo si soy líder) ---
+                  if (amILeader)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 30),
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFC9AA71),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
+                        icon: const Icon(Icons.notifications_active),
+                        label: const Text("GESTIONAR SOLICITUDES", style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () => _showRequestsSheet(context,onRefresh),
                       ),
                     ),
-                  ),
-                  // ---------------------------------------------
 
-                  title: Text(
-                      "${m['riotIdName']}#${m['riotIdTag']}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)
+                  const Align(alignment: Alignment.centerLeft, child: Text("ROSTER", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.5))),
+                  const SizedBox(height: 10),
+
+                  // --- 4. LISTA DE MIEMBROS ---
+                  if (members.isEmpty)
+                    const Text("No hay miembros visibles.", style: TextStyle(color: Colors.white)),
+
+                  // Dentro de _buildMyTeamDetails en main.dart
+
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: members.length,
+                    itemBuilder: (context, index) {
+                      final m = members[index];
+
+                      // Identificar roles
+                      bool isThisMemberLeader = m['leader'] == true || m['isLeader'] == true;
+                      bool isMe = m['id'] == myPlayerId;
+
+                      // Lógica de visualización
+                      // Solo mostramos acciones si YO soy el líder y el miembro NO soy yo
+                      bool showAdminActions = amILeader && !isMe;
+
+                      return Card(
+                        color: const Color(0xFF1E2328),
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        child: ListTile(
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _getRankColor(m['tier'] ?? 'UNRANKED'), width: 2),
+                            ),
+                            child: Center(
+                              child: Text(
+                                (m['riotIdName'] ?? "?").substring(0, 1).toUpperCase(),
+                                style: TextStyle(color: _getRankColor(m['tier'] ?? 'UNRANKED'), fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          title: Text("${m['riotIdName']}#${m['riotIdTag']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                          subtitle: Text("${m['tier'] ?? 'UNRANKED'} ${m['division'] ?? ''}", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+
+                          // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
+                          trailing: isThisMemberLeader
+                              ? const Tooltip(message: "Líder", child: Text("👑", style: TextStyle(fontSize: 24)))
+                              : (showAdminActions
+                              ? Row(
+                            mainAxisSize: MainAxisSize.min, // Para que los botones no ocupen todo el ancho
+                            children: [
+                              // Botón Transferir Liderazgo
+                              IconButton(
+                                icon: const Icon(Icons.star_outline, color: Colors.yellow),
+                                tooltip: "Nombrar Líder",
+                                onPressed: () => _showTransferConfirmation(context, m, onRefresh),
+                              ),
+                              // Botón Expulsar
+                              IconButton(
+                                icon: const Icon(Icons.person_remove, color: Color(0xFFD32F2F)),
+                                tooltip: "Expulsar",
+                                onPressed: () => _showKickConfirmation(context, m, onRefresh), // Tu función existente
+                              ),
+                            ],
+                          )
+                              : null),
+                        ),
+                      );
+                    },
                   ),
-                  subtitle: Text(
-                    "${m['tier'] ?? 'UNRANKED'} ${m['rank'] ?? ''} ${m['division'] ?? ''}", // Ojo: a veces viene 'rank' o 'division' según tu DTO
-                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                  ),
-                  trailing: isLeader
-                      ? const Tooltip(
-                    message: "Líder",
-                    child: Text("👑", style: TextStyle(fontSize: 24)), // Corona dorada
-                  )
-                      : null,
-                ),
+
+                  const SizedBox(height: 30),
+
+                  // --- 5. BOTONES DE SALIDA ---
+                  // Botón DISOLVER (Líder)
+                  if (amILeader)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      icon: const Icon(Icons.delete_forever, color: Colors.white),
+                      label: const Text("DISOLVER EQUIPO", style: TextStyle(color: Colors.white)),
+                      onPressed: () async {
+                        // Confirmación básica
+                        bool confirm = await showDialog(
+                            context: context,
+                            builder: (c) => AlertDialog(
+                              title: const Text("¿Disolver equipo?"),
+                              content: const Text("Todos los miembros serán expulsados. Esto no se puede deshacer."),
+                              actions: [
+                                TextButton(onPressed:()=>Navigator.pop(c, false), child: const Text("Cancelar")),
+                                TextButton(onPressed:()=>Navigator.pop(c, true), child: const Text("Disolver", style: TextStyle(color: Colors.red))),
+                              ],
+                            )
+                        ) ?? false;
+
+                        if (confirm) {
+                          bool success = await ApiService.dissolveTeam();
+                          if (success) {
+                            onRefresh();
+                          }
+                        }
+                      },
+                    )
+                  else
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+                      icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                      label: const Text("ABANDONAR EQUIPO", style: TextStyle(color: Colors.white)),
+                      onPressed: () async {
+                        bool confirm = await showDialog(
+                            context: context,
+                            builder: (c) => AlertDialog(
+                              title: const Text("¿Abandonar equipo?"),
+                              actions: [
+                                TextButton(onPressed:()=>Navigator.pop(c, false), child: const Text("Cancelar")),
+                                TextButton(onPressed:()=>Navigator.pop(c, true), child: const Text("Salir", style: TextStyle(color: Colors.red))),
+                              ],
+                            )
+                        ) ?? false;
+
+                        if (confirm) {
+                          bool success = await ApiService.leaveTeam();
+                          if (success) {
+                            onRefresh();
+                          }
+                        }
+                      },
+                    ),
+                ],
               );
             },
           ),
-
-          const SizedBox(height: 30),
-
-          // Botones de acción
-          if (amILeader)
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              icon: const Icon(Icons.delete_forever, color: Colors.white),
-              label: const Text("DISOLVER EQUIPO", style: TextStyle(color: Colors.white)),
-              onPressed: () async {
-                // Implementar lógica de borrar equipo
-                await ApiService.leaveTeam(); // O endpoint específico deleteTeam
-                _refreshData();
-              },
-            )
-          else
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
-              icon: const Icon(Icons.exit_to_app, color: Colors.white),
-              label: const Text("ABANDONAR EQUIPO", style: TextStyle(color: Colors.white)),
-              onPressed: () async {
-                await ApiService.leaveTeam();
-                _refreshData();
-              },
-            ),
         ],
       ),
     );
+  }
+
+  Color _getRankColor(String tier) {
+    switch (tier.toUpperCase()) {
+      case 'IRON': return const Color(0xFF655D58);
+      case 'BRONZE': return const Color(0xFF8C523A);
+      case 'SILVER': return const Color(0xFF8E9DA4);
+      case 'GOLD': return const Color(0xFFE3B24F);
+      case 'PLATINUM': return const Color(0xFF259893);
+      case 'EMERALD': return const Color(0xFF27A845);
+      case 'DIAMOND': return const Color(0xFF5378AD);
+      case 'MASTER': return const Color(0xFF9D5DD3);
+      case 'GRANDMASTER': return const Color(0xFFCD3744);
+      case 'CHALLENGER': return const Color(0xFFF4C874);
+      default: return Colors.grey;
+    }
   }
 
   Widget _buildInfoBadge(String label, String value) {
@@ -1050,15 +1064,28 @@ class _TeamViewState extends State<TeamView> {
                       trailing: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC9AA71)),
                         onPressed: () async {
-                          bool success = await ApiService.joinTeam(t['id']);
+                          bool success = await ApiService.requestJoinTeam(t['id']);
                           if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Te has unido al equipo")));
-                            _refreshData(); // Recargamos para que ahora salga la vista "Mi Equipo"
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("✅ Solicitud enviada al líder"),
+                                    backgroundColor: Colors.green,
+                                  )
+                              );
+                            }
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al unirse")));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("Error: Ya has solicitado o tienes equipo"),
+                                    backgroundColor: Colors.red,
+                                  )
+                              );
+                            }
                           }
                         },
-                        child: const Text("UNIRSE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                        child: const Text("SOLICITAR UNIRSE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   );
@@ -1080,6 +1107,164 @@ class _TeamViewState extends State<TeamView> {
           ),
         )
       ],
+    );
+  }
+
+  Future<void> _showTransferConfirmation(BuildContext context, Map<String, dynamic> member, VoidCallback onRefresh) async {
+    bool confirm = await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1E2328),
+        title: const Text("👑 Transferir Liderazgo", style: TextStyle(color: Colors.white)),
+        content: Text(
+          "¿Estás seguro de nombrar líder a ${member['riotIdName']}?\n\nDejarás de ser el líder y perderás los permisos de gestión inmediatamente.",
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancelar", style: TextStyle(color: Colors.white)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("CONFIRMAR", style: TextStyle(color: Color(0xFFC9AA71), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (confirm) {
+      // 1. Llamar a la API
+      bool success = await ApiService.transferLeadership(member['id']);
+
+      if (success) {
+        // 2. Feedback visual
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Ahora ${member['riotIdName']} es el líder del equipo.")),
+          );
+        }
+        // 3. RECARGAR (Muy importante: ya no verás los botones de admin)
+        onRefresh();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Error al transferir liderazgo.")),
+          );
+        }
+      }
+    }
+  }
+
+  void _showKickConfirmation(BuildContext context, Map<String, dynamic> member,VoidCallback onRefresh) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2328),
+          title: const Text("¿Expulsar jugador?", style: TextStyle(color: Colors.white)),
+          content: Text(
+            "¿Estás seguro de que quieres eliminar a ${member['riotIdName']} del equipo? Esta acción no se puede deshacer.",
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+              child: const Text("EXPULSAR", style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                Navigator.of(dialogContext).pop(); // Cerrar diálogo
+
+                // 1. Llamar a la API
+                // Asegúrate de que member['id'] es el ID del Player, no del User
+                bool success = await ApiService.kickMember(member['id']);
+
+                if (success) {
+                  // 2. Refrescar la pantalla
+                  onRefresh();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("${member['riotIdName']} ha sido expulsado."))
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Error al expulsar al jugador."))
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRequestsSheet(BuildContext context,VoidCallback onRefresh) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E2328),
+      builder: (context) {
+        return FutureBuilder<List<dynamic>>(
+          future: ApiService.getTeamRequests(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            final reqs = snapshot.data!;
+
+            if (reqs.isEmpty) return const Center(child: Text("No hay solicitudes pendientes", style: TextStyle(color: Colors.white)));
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: reqs.length,
+              separatorBuilder: (_, __) => const Divider(color: Colors.white10),
+              itemBuilder: (context, index) {
+                final req = reqs[index];
+                return ListTile(
+                  title: Text("${req['player']['riotIdName']}#${req['player']['riotIdTag']}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Nivel: ${req['player']['summonerLevel']}", style: const TextStyle(color: Colors.grey)),
+
+                  // CLICK PARA VER PERFIL
+                  onTap: () {
+                    if (req['player']['id'] != null) {
+                      int id = req['player']['id']; // Si viene como int
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => UserProfileView(playerId: id),
+                        ),
+                      );
+                    }
+                  },
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // RECHAZAR
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        onPressed: () async {
+                          await ApiService.respondRequest(req['requestId'], false);
+                          Navigator.pop(context);
+                          onRefresh();// Cierra y obliga a reabrir o usa setState
+                        },
+                      ),
+                      // ACEPTAR
+                      IconButton(
+                        icon: const Icon(Icons.check, color: Colors.green),
+                        onPressed: () async {
+                          await ApiService.respondRequest(req['requestId'], true);
+                          Navigator.pop(context); // Cierra para refrescar la vista del equipo detrás
+                          onRefresh();
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1159,22 +1344,54 @@ class _TeamViewState extends State<TeamView> {
       ),
     );
   }
+}
 
-  Color _getRankColor(String? tier) {
-    if (tier == null) return Colors.grey;
-    switch (tier.toUpperCase()) {
-      case 'IRON': return const Color(0xFF655D58);
-      case 'BRONZE': return const Color(0xFF8C523A);
-      case 'SILVER': return const Color(0xFF8E9DA4);
-      case 'GOLD': return const Color(0xFFE3B24F);
-      case 'PLATINUM': return const Color(0xFF259893);
-      case 'EMERALD': return const Color(0xFF27A845);
-      case 'DIAMOND': return const Color(0xFF5378AD);
-      case 'MASTER': return const Color(0xFF9D5DD3);
-      case 'GRANDMASTER': return const Color(0xFFCD3744);
-      case 'CHALLENGER': return const Color(0xFFF4C874);
-      default: return Colors.grey;
-    }
+class UserProfileView extends StatefulWidget {
+  final int playerId;
+
+  const UserProfileView({super.key, required this.playerId});
+
+  @override
+  State<UserProfileView> createState() => _UserProfileViewState();
+}
+
+class _UserProfileViewState extends State<UserProfileView> {
+  late Future<Map<String, dynamic>?> _userFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Llamada a la API buscando por ID
+    _userFuture = ApiService.getProfileUser(widget.playerId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF091428),
+      appBar: AppBar(
+        title: const Text("Perfil de Invocador"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: FutureBuilder<Map<String, dynamic>?>(
+        future: _userFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFC9AA71)));
+          }
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+            return const Center(child: Text("Perfil no encontrado o privado", style: TextStyle(color: Colors.white)));
+          }
+
+          // Aquí reutilizamos el widget visual
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: PlayerInfoCard(player: snapshot.data!),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -1386,6 +1603,147 @@ class _TournamentViewState extends State<TournamentView> {
           Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
         ],
       ),
+    );
+  }
+}
+
+class PlayerInfoCard extends StatelessWidget {
+  final Map<String, dynamic> player;
+
+  const PlayerInfoCard({super.key, required this.player});
+
+  @override
+  Widget build(BuildContext context) {
+    String name = player['riotIdName'] ?? "Unknown";
+    String tag = player['riotIdTag'] ?? "EUW";
+    String region = player['region'] ?? "EUW";
+    int level = player['summonerLevel'] ?? 1;
+    String tier = player['tier'] ?? "UNRANKED";
+    String division = player['division'] ?? "";
+    int lp = player['leaguePoints'] ?? 0;
+    int iconId = player['profileIconId'] ?? 1;
+
+    Color rankColor = _getRankColor(tier);
+    Gradient bgGradient = _getRankGradient(tier);
+    String rankImgUrl = _getRankImageUrl(tier);
+
+    return Column(
+      children: [
+        // --- AVATAR ---
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: rankColor, width: 3),
+          ),
+          child: CircleAvatar(
+            radius: 50,
+            backgroundImage: NetworkImage("https://ddragon.leagueoflegends.com/cdn/14.1.1/img/profileicon/$iconId.png"),
+            backgroundColor: Colors.grey[900],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          "$name #$tag",
+          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        Container(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            "$region • Nivel $level",
+            style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+          ),
+        ),
+
+        const SizedBox(height: 30),
+
+        // --- TARJETA DE RANGO ---
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+              gradient: bgGradient,
+              border: Border.all(color: rankColor.withOpacity(0.5)),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
+              ]
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 100,
+                height: 100,
+                child: Image.network(
+                  rankImgUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Icon(Icons.shield, size: 80, color: rankColor),
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("CLASIFICATORIA FLEXIBLE", style: TextStyle(fontSize: 10, color: Colors.grey, letterSpacing: 1.5)),
+                    const SizedBox(height: 5),
+                    Text(
+                      tier,
+                      style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: rankColor,
+                          fontStyle: FontStyle.italic
+                      ),
+                    ),
+                    Text(
+                      "$division • $lp LP",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+              )
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- Helpers de Estilo (Copiados de tu código) ---
+  String _getRankImageUrl(String tier) {
+    String t = tier.toLowerCase();
+    if (t == 'unranked') return "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblems/unranked.png";
+    return "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblems/emblem-$t.png";
+  }
+
+  Color _getRankColor(String tier) {
+    switch (tier.toUpperCase()) {
+      case 'IRON': return const Color(0xFF655D58);
+      case 'BRONZE': return const Color(0xFF8C523A);
+      case 'SILVER': return const Color(0xFF8E9DA4);
+      case 'GOLD': return const Color(0xFFE3B24F);
+      case 'PLATINUM': return const Color(0xFF259893);
+      case 'EMERALD': return const Color(0xFF27A845);
+      case 'DIAMOND': return const Color(0xFF5378AD);
+      case 'MASTER': return const Color(0xFF9D5DD3);
+      case 'GRANDMASTER': return const Color(0xFFCD3744);
+      case 'CHALLENGER': return const Color(0xFFF4C874);
+      default: return Colors.grey;
+    }
+  }
+
+  Gradient _getRankGradient(String tier) {
+    Color base = _getRankColor(tier);
+    return LinearGradient(
+      colors: [const Color(0xFF1E2328), base.withOpacity(0.25)],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
     );
   }
 }

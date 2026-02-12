@@ -1,5 +1,6 @@
 package es.uca.legends.dtos;
 
+import es.uca.legends.entities.Player;
 import lombok.Data;
 import java.util.List;
 
@@ -10,8 +11,7 @@ public class TeamResponseDto {
     private String tag;
     private String region;
     private String division;
-    private String leaderName;
-    private int memberCount;
+    private PlayerResponse leader;
 
     private List<TeamMemberDto> members;
 }

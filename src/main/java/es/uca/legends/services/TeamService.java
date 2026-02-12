@@ -2,13 +2,16 @@ package es.uca.legends.services;
 import es.uca.legends.dtos.CreateTeamRequest;
 import es.uca.legends.entities.Player;
 import es.uca.legends.entities.Team;
+import es.uca.legends.entities.TeamJoinRequest;
 import es.uca.legends.entities.User;
 import es.uca.legends.repositories.PlayerRepository;
+import es.uca.legends.repositories.TeamJoinRequestRepository;
 import es.uca.legends.repositories.TeamRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -19,6 +22,7 @@ public class TeamService {
 
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
+    private final TeamJoinRequestRepository requestRepository;
 
     @Transactional
     public Team createTeam(User user, CreateTeamRequest request) {
@@ -56,6 +60,65 @@ public class TeamService {
         return newTeam;
     }
 
+    public void requestJoinTeam(User user, Long teamId) {
+        Player player = user.getPlayer();
+        Team team = teamRepository.findById(teamId).orElseThrow();
+
+        if (player.getTeam() != null) throw new RuntimeException("Ya tienes equipo.");
+        if (requestRepository.existsByPlayerIdAndTeamId(player.getId(), teamId)) {
+            throw new RuntimeException("Ya has enviado solicitud a este equipo.");
+        }
+
+        TeamJoinRequest req = TeamJoinRequest.builder()
+                .player(player)
+                .team(team)
+                .requestDate(LocalDateTime.now())
+                .build();
+
+        requestRepository.save(req);
+    }
+
+    public List<TeamJoinRequest> getPendingRequests(User user) {
+        Team team = user.getPlayer().getTeam();
+        if (team == null || !team.getLeader().getId().equals(user.getPlayer().getId())) {
+            throw new RuntimeException("Solo el líder puede ver solicitudes.");
+        }
+        return requestRepository.findByTeamId(team.getId());
+    }
+
+    // --- D. RESPONDER SOLICITUD (Aceptar/Rechazar) ---
+    public void respondToRequest(User leaderUser, Long requestId, boolean accept) {
+        TeamJoinRequest req = requestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Solicitud no encontrada"));
+
+        // Verificar permisos
+        if (!req.getTeam().getLeader().getId().equals(leaderUser.getPlayer().getId())) {
+            throw new RuntimeException("No autorizado.");
+        }
+
+        Player newMember = req.getPlayer();
+
+        if ( newMember.getTeam() == null ){
+            if (accept) {
+
+                Team team = req.getTeam();
+
+                // Asignar equipo
+                newMember.setTeam(team);
+                playerRepository.save(newMember);
+
+                // Actualizar media (FIX de memoria incluido)
+                if (team.getMembers() == null) team.setMembers(new ArrayList<>());
+                team.getMembers().add(newMember);
+                updateTeamDivision(team);
+                teamRepository.save(team);
+            }
+        }else throw new RuntimeException("El jugador ya está en un equipo");
+
+
+        // Borrar la solicitud (tanto si se acepta como si se rechaza)
+        requestRepository.delete(req);
+    }
 
     @Transactional
     public void joinTeam(User user, Long teamId) {
@@ -105,6 +168,7 @@ public class TeamService {
 
         currentPlayer.setTeam(null);
         playerRepository.save(currentPlayer);
+        team.getMembers().remove(currentPlayer);
         updateTeamDivision(team);
     }
 
@@ -134,6 +198,7 @@ public class TeamService {
         }
 
         // 5. Ejecutar la expulsión (Desvincular)
+        team.getMembers().remove(playerToKick);
         playerToKick.setTeam(null);
         playerRepository.save(playerToKick);
         updateTeamDivision(team);
@@ -153,8 +218,14 @@ public class TeamService {
             throw new RuntimeException("Solo el líder puede disolver el equipo.");
         }
 
-        leaderPlayer.setTeam(null);
-        playerRepository.save(leaderPlayer);
+        List<Player> members = team.getMembers();
+
+        for (Player member : members) {
+            member.setTeam(null);  // Rompemos la relación en el objeto Java
+            playerRepository.save(member); // Actualizamos el estado del jugador
+        }
+
+        team.getMembers().clear();
 
         teamRepository.delete(team);
     }

@@ -6,7 +6,9 @@ import java.util.List;
 
 @Entity
 @Table(name = "Teams")
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -15,6 +17,7 @@ public class Team {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "ID")
+    @EqualsAndHashCode.Include
     private Long id;
 
     @Column(name = "Name",unique = true)
@@ -34,10 +37,12 @@ public class Team {
 
     @OneToOne
     @JoinColumn(name = "LeaderId")
-    @JsonIgnoreProperties("team")
+    @JsonIgnoreProperties({"team", "user"})
+    @ToString.Exclude
     private Player leader;
 
     @OneToMany(mappedBy = "team", fetch = FetchType.EAGER)
+    @JsonIgnoreProperties({"team", "user"}) // <--- Asegúrate de ignorar "user" aquí también
     @ToString.Exclude
     private List<Player> members;
 

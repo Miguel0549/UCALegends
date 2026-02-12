@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -180,6 +181,11 @@ class ApiService {
     return data is Map<String, dynamic> ? data : null;
   }
 
+  static Future<Map<String, dynamic>?> getProfileUser( int id ) async {
+    final data = await _authenticatedGet('/users/$id');
+    return data is Map<String, dynamic> ? data : null;
+  }
+
   static Future<bool> createDevPlayer(Map<String, dynamic> playerData) async {
     final token = await getAccessToken();
     final response = await http.post(
@@ -239,17 +245,20 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // 3. Unirse a Equipo
-  static Future<bool> joinTeam(int teamId) async {
-    final token = await getAccessToken();
-    final response = await http.post(
-      Uri.parse('$baseUrl/teams/$teamId/join'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    return response.statusCode == 200;
+  static Future<List<dynamic>> getTeamMembers(int teamId) async {
+    try {
+      final response = await _authenticatedGet('/teams/$teamId/members');
+
+      // Si la respuesta es una lista, la devolvemos directamente
+      if (response is List) {
+        return response;
+      } else {
+        return [];
+      }
+    } catch (e) {
+      print("Error obteniendo miembros: $e");
+      return [];
+    }
   }
 
   // 4. Salir de Equipo
@@ -263,5 +272,140 @@ class ApiService {
       },
     );
     return response.statusCode == 200;
+  }
+
+  // -----------------------------------------------------------------------
+  // --- GESTIÓN DE EQUIPOS (NUEVO SISTEMA DE SOLICITUDES) ---
+  // -----------------------------------------------------------------------
+
+  // 1. SOLICITAR UNIRSE A UN EQUIPO
+  // El usuario envía una petición al líder del equipo
+  static Future<bool> requestJoinTeam(int teamId) async {
+    final token = await getAccessToken();
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/teams/$teamId/request'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error al solicitar unirse: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Excepción solicitando unirse: $e");
+      return false;
+    }
+  }
+
+  static Future<bool> transferLeadership(int newLeaderId) async {
+    final token = await getAccessToken();
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/teams/leader/$newLeaderId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error transfiriendo liderazgo: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Excepción transfiriendo liderazgo: $e");
+      return false;
+    }
+  }
+
+  static Future<bool> dissolveTeam() async {
+    final token = await getAccessToken();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/teams/delete'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return response.statusCode == 200;
+  }
+
+  // 2. ECHAR A UN MIEMBRO (Solo Líder)
+  static Future<bool> kickMember(int playerId) async {
+    final token = await getAccessToken();
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/teams/kick/$playerId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error al expulsar miembro: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Excepción al expulsar: $e");
+      return false;
+    }
+  }
+
+  // 3. OBTENER LISTA DE SOLICITUDES PENDIENTES (Solo Líder)
+  static Future<List<dynamic>> getTeamRequests() async {
+    final token = await getAccessToken();
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/teams/requests'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body); // Devuelve la lista de solicitudes
+      } else {
+        print("Error obteniendo solicitudes: ${response.body}");
+        return [];
+      }
+    } catch (e) {
+      print("Excepción obteniendo solicitudes: $e");
+      return [];
+    }
+  }
+
+  // 4. RESPONDER A UNA SOLICITUD (Aceptar o Rechazar)
+  static Future<bool> respondRequest(int requestId, bool accept) async {
+    final token = await getAccessToken();
+    final action = accept ? "accept" : "reject";
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/teams/requests/$requestId/$action'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error respondiendo solicitud: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Excepción respondiendo solicitud: $e");
+      return false;
+    }
   }
 }

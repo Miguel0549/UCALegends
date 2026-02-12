@@ -10,13 +10,14 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-//@Component
+@Component
 @RequiredArgsConstructor
 public class MatchmakingSimulationRunner implements CommandLineRunner {
 
     private final MatchmakingService matchmakingService;
     private final TeamRepository teamRepository;
     private final TournamentRepository tournamentRepository;
+    private final TournamentService tournamentService;
     private final TournamentRegistrationRepository registrationRepository;
     private final MatchRepository matchRepository;
     private final PlayerRepository playerRepository;
@@ -73,32 +74,86 @@ public class MatchmakingSimulationRunner implements CommandLineRunner {
                     " | Div Equipo: " + t.getDivision());
         }
 
-        // --- RONDA 1 ---
-        System.out.println("\n>>> GENERANDO RONDA 1 <<<");
-        // Pasamos una copia de la lista para no afectar la original en memoria
-        List<Match> matchesR1 = matchmakingService.generateMatches(torneo, new ArrayList<>(equipos), 1);
-        imprimirResultados(matchesR1);
+        System.out.println("\n>>> INICIANDO TORNEO (Genera Ronda 1) <<<");
+        // Esto debería crear los partidos de la Ronda 1 en la base de datos con estado PENDING
+        tournamentService.advanceToNextRound(torneo.getId());
 
-        // --- SIMULAR JUEGO RONDA 1 ---
-        List<Team> ganadoresR1 = new ArrayList<>();
-        for(Match m : matchesR1) {
-            if (m.getTeamB() == null) { // BYE
-                ganadoresR1.add(m.getTeamA());
-            } else {
-                // Gana el Team A (el de mejor ELO por defecto en esta simulación)
-                m.setWinner(m.getTeamA());
-                m.setStatus("FINISHED");
-                matchRepository.save(m);
-                ganadoresR1.add(m.getTeamA());
-            }
+        // =========================================================================
+        // 🔴 RONDA 1
+        // =========================================================================
+        System.out.println("\n>>> JUGANDO RONDA 1 <<<");
+
+        // 1. Recuperamos lo que startTournament ha creado en la BD
+        List<Match> matchesR1 = matchRepository.findByTournamentAndRound(torneo, 1);
+
+        if (matchesR1.isEmpty()) {
+            throw new RuntimeException("Error: No se han generado partidos para la Ronda 1.");
         }
 
-        // --- RONDA 2 ---
-        System.out.println("\n>>> GENERANDO RONDA 2 <<<");
-        List<Match> matchesR2 = matchmakingService.generateMatches(torneo, ganadoresR1, 2);
-        imprimirResultados(matchesR2);
+        // 2. Simulamos
+        for (Match m : matchesR1) {
+            simularPartido(m); // Método auxiliar abajo
+        }
 
-        System.out.println("\n✅ SIMULACIÓN FINALIZADA");
+        // 3. Avanzamos (Esto valida que R1 acabó y GENERA los partidos de R2)
+        System.out.println("✅ Ronda 1 finalizada. Avanzando...");
+        tournamentService.advanceToNextRound(torneo.getId());
+
+
+        // =========================================================================
+        // 🔴 RONDA 2
+        // =========================================================================
+        System.out.println("\n>>> JUGANDO RONDA 2 <<<");
+
+        // 1. Recuperamos los partidos que advanceToNextRound acaba de crear
+        List<Match> matchesR2 = matchRepository.findByTournamentAndRound(torneo, 2);
+
+        // 2. Simulamos
+        for (Match m : matchesR2) {
+            simularPartido(m);
+        }
+
+        // 3. Avanzamos (Valida R2 y genera R3)
+        System.out.println("✅ Ronda 2 finalizada. Avanzando...");
+        tournamentService.advanceToNextRound(torneo.getId());
+
+
+        // =========================================================================
+        // 🔴 RONDA 3 (FINAL o Semis, según cantidad de equipos)
+        // =========================================================================
+        System.out.println("\n>>> JUGANDO RONDA 3 <<<");
+
+        List<Match> matchesR3 = matchRepository.findByTournamentAndRound(torneo, 3);
+
+        // Si ya no hay partidos (porque el torneo acabó en la ronda anterior), controlamos eso
+        if (!matchesR3.isEmpty()) {
+            for (Match m : matchesR3) {
+                simularPartido(m);
+            }
+            System.out.println("✅ Ronda 3 finalizada. Cerrando torneo...");
+            // Al avanzar aquí, si era la final, el torneo pasará a FINALIZADO
+            tournamentService.advanceToNextRound(torneo.getId());
+        } else {
+            System.out.println("Parece que el torneo ya ha terminado.");
+        }
+
+        System.out.println("\n✅ SIMULACIÓN COMPLETA FINALIZADA");
+    }
+
+    private void simularPartido(Match m) {
+        if (m.getTeamB() == null) {
+            // Es un BYE (pase directo)
+            m.setWinner(m.getTeamA());
+            m.setStatus("FINISHED");
+            System.out.println("   ✨ [BYE] " + m.getTeamA().getName() + " pasa de ronda.");
+        } else {
+            // Simulación: Gana siempre el Team A (o haz un random)
+            m.setWinner(m.getTeamA());
+            m.setStatus("FINISHED");
+            m.setDurationSec(1800); // 30 min
+            System.out.println("   ⚔️  " + m.getTeamA().getName() + " gana a " + m.getTeamB().getName());
+        }
+        matchRepository.save(m);
     }
 
     /**
