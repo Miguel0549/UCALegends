@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart'; // Para formatear fechas
 import 'api_service.dart'; // Importa el archivo que creamos arriba
 import 'splash_screen.dart';
+import 'HallOfFame.dart';
 
 void main() {
   runApp(LegendsApp());
@@ -742,16 +743,24 @@ class _TeamViewState extends State<TeamView> {
   }
 
   // --- WIDGET CASO 2: MI EQUIPO (DETALLES E INTEGRANTES) ---
-  Widget _buildMyTeamDetails(Map<String, dynamic> team, int myPlayerId,VoidCallback onRefresh) {
+  Widget _buildMyTeamDetails(Map<String, dynamic> team, int myPlayerId, VoidCallback onRefresh, {bool isReadOnly = false}) {
+
     int teamId = team['id'];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          const SizedBox(height: 20),
+          // Si es un modal, ponemos una rayita arriba para indicar que se puede bajar
+          if (isReadOnly)
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              width: 50,
+              height: 5,
+              decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(10)),
+            ),
 
-          // --- 1. CABECERA DEL EQUIPO (Siempre visible) ---
+          // --- 1. CABECERA (Siempre visible) ---
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -780,12 +789,11 @@ class _TeamViewState extends State<TeamView> {
 
           const SizedBox(height: 20),
 
-          // --- 2. CARGAMOS MIEMBROS Y CALCULAMOS LIDERAZGO ---
+          // --- 2. CARGA DE MIEMBROS ---
           FutureBuilder<List<dynamic>>(
             future: ApiService.getTeamMembers(teamId),
             builder: (context, snapshot) {
 
-              // A) Mientras carga o si hay error
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: Color(0xFFC9AA71)));
               }
@@ -793,27 +801,22 @@ class _TeamViewState extends State<TeamView> {
 
               final members = snapshot.data ?? [];
 
-              // B) CALCULAMOS SI SOY EL LÍDER MIRANDO LA LISTA
-              // Buscamos si hay algún miembro que sea YO (por ID) y que tenga flag de leader
+              // Calculamos liderazgo (SOLO si NO es modo lectura, ahorramos lógica)
               bool amILeader = false;
-              try {
-                final meInTeam = members.firstWhere(
-                        (m) => m['id'] == myPlayerId,
-                    orElse: () => null
-                );
-                if (meInTeam != null) {
-                  // Comprobamos ambas claves por si Jackson cambia el nombre
-                  amILeader = meInTeam['leader'] == true || meInTeam['isLeader'] == true;
-                }
-              } catch (e) {
-                print("Error calculando líder: $e");
+              if (!isReadOnly) {
+                try {
+                  final meInTeam = members.firstWhere((m) => m['id'] == myPlayerId, orElse: () => null);
+                  if (meInTeam != null) {
+                    amILeader = meInTeam['leader'] == true || meInTeam['isLeader'] == true;
+                  }
+                } catch (e) { print(e); }
               }
 
               return Column(
                 children: [
 
-                  // --- 3. BOTÓN DE GESTIÓN (Solo si soy líder) ---
-                  if (amILeader)
+                  // --- BOTÓN GESTIÓN (Solo si soy líder Y NO es modo lectura) ---
+                  if (amILeader && !isReadOnly)
                     Container(
                       margin: const EdgeInsets.only(bottom: 30),
                       width: double.infinity,
@@ -833,11 +836,7 @@ class _TeamViewState extends State<TeamView> {
                   const Align(alignment: Alignment.centerLeft, child: Text("ROSTER", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.5))),
                   const SizedBox(height: 10),
 
-                  // --- 4. LISTA DE MIEMBROS ---
-                  if (members.isEmpty)
-                    const Text("No hay miembros visibles.", style: TextStyle(color: Colors.white)),
-
-                  // Dentro de _buildMyTeamDetails en main.dart
+                  if (members.isEmpty) const Text("No hay miembros visibles.", style: TextStyle(color: Colors.white)),
 
                   ListView.builder(
                     shrinkWrap: true,
@@ -845,14 +844,11 @@ class _TeamViewState extends State<TeamView> {
                     itemCount: members.length,
                     itemBuilder: (context, index) {
                       final m = members[index];
-
-                      // Identificar roles
                       bool isThisMemberLeader = m['leader'] == true || m['isLeader'] == true;
                       bool isMe = m['id'] == myPlayerId;
 
-                      // Lógica de visualización
-                      // Solo mostramos acciones si YO soy el líder y el miembro NO soy yo
-                      bool showAdminActions = amILeader && !isMe;
+                      // Solo mostramos acciones si NO es lectura, SOY líder y NO soy yo mismo
+                      bool showAdminActions = !isReadOnly && amILeader && !isMe;
 
                       return Card(
                         color: const Color(0xFF1E2328),
@@ -872,31 +868,26 @@ class _TeamViewState extends State<TeamView> {
                               ),
                             ),
                           ),
-                          title: Text("${m['riotIdName']}#${m['riotIdTag']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                          title: Text("${m['riotIdName']} #${m['riotIdTag']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                           subtitle: Text("${m['tier'] ?? 'UNRANKED'} ${m['division'] ?? ''}", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
 
-                          // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
                           trailing: isThisMemberLeader
                               ? const Tooltip(message: "Líder", child: Text("👑", style: TextStyle(fontSize: 24)))
                               : (showAdminActions
                               ? Row(
-                            mainAxisSize: MainAxisSize.min, // Para que los botones no ocupen todo el ancho
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Botón Transferir Liderazgo
                               IconButton(
                                 icon: const Icon(Icons.star_outline, color: Colors.yellow),
-                                tooltip: "Nombrar Líder",
                                 onPressed: () => _showTransferConfirmation(context, m, onRefresh),
                               ),
-                              // Botón Expulsar
                               IconButton(
                                 icon: const Icon(Icons.person_remove, color: Color(0xFFD32F2F)),
-                                tooltip: "Expulsar",
-                                onPressed: () => _showKickConfirmation(context, m, onRefresh), // Tu función existente
+                                onPressed: () => _showKickConfirmation(context, m,onRefresh),
                               ),
                             ],
                           )
-                              : null),
+                              : null), // Si es ReadOnly, el trailing será null (o la corona si es líder)
                         ),
                       );
                     },
@@ -904,60 +895,67 @@ class _TeamViewState extends State<TeamView> {
 
                   const SizedBox(height: 30),
 
-                  // --- 5. BOTONES DE SALIDA ---
-                  // Botón DISOLVER (Líder)
-                  if (amILeader)
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      icon: const Icon(Icons.delete_forever, color: Colors.white),
-                      label: const Text("DISOLVER EQUIPO", style: TextStyle(color: Colors.white)),
-                      onPressed: () async {
-                        // Confirmación básica
-                        bool confirm = await showDialog(
-                            context: context,
-                            builder: (c) => AlertDialog(
-                              title: const Text("¿Disolver equipo?"),
-                              content: const Text("Todos los miembros serán expulsados. Esto no se puede deshacer."),
-                              actions: [
-                                TextButton(onPressed:()=>Navigator.pop(c, false), child: const Text("Cancelar")),
-                                TextButton(onPressed:()=>Navigator.pop(c, true), child: const Text("Disolver", style: TextStyle(color: Colors.red))),
-                              ],
-                            )
-                        ) ?? false;
+                  // --- BOTONES DE SALIDA (Solo si NO es modo lectura) ---
+                  if (!isReadOnly) ...[
+                    if (amILeader)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        icon: const Icon(Icons.delete_forever, color: Colors.white),
+                        label: const Text("DISOLVER EQUIPO", style: TextStyle(color: Colors.white)),
+                        onPressed: () async {
+                          // Confirmación básica
+                          bool confirm = await showDialog(
+                              context: context,
+                              builder: (c) => AlertDialog(
+                                title: const Text("¿Disolver equipo?"),
+                                content: const Text("Todos los miembros serán expulsados. Esto no se puede deshacer."),
+                                actions: [
+                                  TextButton(onPressed:()=>Navigator.pop(c, false), child: const Text("Cancelar")),
+                                  TextButton(onPressed:()=>Navigator.pop(c, true), child: const Text("Disolver", style: TextStyle(color: Colors.red))),
+                                ],
+                              )
+                          ) ?? false;
 
-                        if (confirm) {
-                          bool success = await ApiService.dissolveTeam();
-                          if (success) {
-                            onRefresh();
+                          if (confirm) {
+                            bool success = await ApiService.dissolveTeam();
+                            if (success) {
+                              onRefresh(); // <--- RECARGA LA PANTALLA
+                            }
                           }
-                        }
-                      },
+                        },
+                      )
+                    else
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+                        icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                        label: const Text("ABANDONAR EQUIPO", style: TextStyle(color: Colors.white)),
+                        onPressed: () async {
+                          bool confirm = await showDialog(
+                              context: context,
+                              builder: (c) => AlertDialog(
+                                title: const Text("¿Abandonar equipo?"),
+                                actions: [
+                                  TextButton(onPressed:()=>Navigator.pop(c, false), child: const Text("Cancelar")),
+                                  TextButton(onPressed:()=>Navigator.pop(c, true), child: const Text("Salir", style: TextStyle(color: Colors.red))),
+                                ],
+                              )
+                          ) ?? false;
+
+                          if (confirm) {
+                            bool success = await ApiService.leaveTeam();
+                            if (success) {
+                              onRefresh(); // <--- RECARGA LA PANTALLA
+                            }
+                          }
+                        },
+                      ),
+                  ] else ...[
+                    // Si es modo lectura, quizás quieras poner un botón de cerrar o nada
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Cerrar", style: TextStyle(color: Colors.grey)),
                     )
-                  else
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
-                      icon: const Icon(Icons.exit_to_app, color: Colors.white),
-                      label: const Text("ABANDONAR EQUIPO", style: TextStyle(color: Colors.white)),
-                      onPressed: () async {
-                        bool confirm = await showDialog(
-                            context: context,
-                            builder: (c) => AlertDialog(
-                              title: const Text("¿Abandonar equipo?"),
-                              actions: [
-                                TextButton(onPressed:()=>Navigator.pop(c, false), child: const Text("Cancelar")),
-                                TextButton(onPressed:()=>Navigator.pop(c, true), child: const Text("Salir", style: TextStyle(color: Colors.red))),
-                              ],
-                            )
-                        ) ?? false;
-
-                        if (confirm) {
-                          bool success = await ApiService.leaveTeam();
-                          if (success) {
-                            onRefresh();
-                          }
-                        }
-                      },
-                    ),
+                  ]
                 ],
               );
             },
@@ -1048,23 +1046,22 @@ class _TeamViewState extends State<TeamView> {
 
               if (teams.isEmpty) return const Center(child: Text("No se encontraron equipos con huecos libres."));
 
+              // En tu lista de equipos disponibles:
+
               return ListView.builder(
                 itemCount: teams.length,
                 itemBuilder: (context, index) {
-                  final t = teams[index];
-                  List members = t['members'] ?? [];
+                  final team = teams[index];
 
                   return Card(
-                    color: const Color(0xFF1E2328),
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    // ... tu decoración ...
                     child: ListTile(
-                      leading: const Icon(Icons.shield_outlined, color: Colors.white),
-                      title: Text(t['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text("Región: ${t['region']} • Miembros: ${members.length}/5"),
+                      title: Text(team['name']),
+                      subtitle: Text("Miembros: ${team['members']?.length ?? '?'}/5"), // O lo que tengas
                       trailing: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC9AA71)),
                         onPressed: () async {
-                          bool success = await ApiService.requestJoinTeam(t['id']);
+                          bool success = await ApiService.requestJoinTeam(team['id']);
                           if (success) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -1087,6 +1084,35 @@ class _TeamViewState extends State<TeamView> {
                         },
                         child: const Text("SOLICITAR UNIRSE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                       ),
+
+                      // --- AQUÍ AÑADIMOS EL EVENTO AL TOCAR EL EQUIPO ---
+                      onTap: () {
+                        // Mostramos los detalles en una hoja deslizante (BottomSheet)
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true, // Para que pueda ocupar más pantalla si es necesario
+                          backgroundColor: const Color(0xFF090A0C),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                          ),
+                          builder: (context) {
+                            return DraggableScrollableSheet(
+                              initialChildSize: 0.7, // Altura inicial (70% de la pantalla)
+                              minChildSize: 0.4,
+                              maxChildSize: 0.95,
+                              expand: false,
+                              builder: (context, scrollController) {
+                                // Reutilizamos la función con isReadOnly: true
+                                return SingleChildScrollView(
+                                  controller: scrollController,
+                                  // Pasamos una función vacía () {} en onRefresh porque en modo lectura no vamos a refrescar nada
+                                  child: _buildMyTeamDetails(team, 0, () {}, isReadOnly: true),
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
                     ),
                   );
                 },
@@ -1414,12 +1440,242 @@ class _TournamentViewState extends State<TournamentView> {
   // En prod, deberías buscar el primer torneo activo de la lista.
   late Future<List<dynamic>> _liveMatchesFuture;
 
+  bool _isAdmin = false;
+
   @override
   void initState() {
     super.initState();
+    _checkAdminRole();
     _historyFuture = ApiService.getHistory("EUW");
     _tournamentsFuture = ApiService.getTournaments();
     _liveMatchesFuture = ApiService.getCurrentMatches(1);
+  }
+
+  void _checkAdminRole() async {
+    bool admin = await ApiService.isUserAdmin();
+    if (mounted) setState(() => _isAdmin = admin);
+  }
+
+  void _showCreateTournamentDialog() {
+    // Controladores y valores por defecto
+    final nameController = TextEditingController();
+    String selectedRegion = "EUW";
+    String selectedGameMode = "CLASSIC"; // O "ARAM", "5v5"
+    int selectedMaxTeams = 8; // Mejor usar potencias de 2 (4, 8, 16)
+
+    // Fechas por defecto
+    DateTime dateInsc = DateTime.now().add(const Duration(days: 2));
+    DateTime dateInicio = DateTime.now().add(const Duration(days: 3));
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder( // Necesario para que los Dropdowns y Fechas cambien visualmente
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E2328),
+              title: const Text("Crear Nuevo Torneo", style: TextStyle(color: Color(0xFFC9AA71))),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 1. NOMBRE
+                    TextField(
+                      controller: nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: "Nombre del Torneo",
+                        labelStyle: TextStyle(color: Colors.grey),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFC9AA71))),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+
+                    // 2. REGIÓN Y MODO DE JUEGO (Fila)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedRegion,
+                            dropdownColor: const Color(0xFF1E2328),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Región", labelStyle: TextStyle(color: Colors.grey)),
+                            items: ["EUW", "NA", "KR", "LATAM"].map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                            onChanged: (val) => setDialogState(() => selectedRegion = val!),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedGameMode,
+                            dropdownColor: const Color(0xFF1E2328),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: "Modo", labelStyle: TextStyle(color: Colors.grey)),
+                            items: ["CLASSIC", "ARAM", "1v1"].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                            onChanged: (val) => setDialogState(() => selectedGameMode = val!),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+
+                    // 3. MAX EQUIPOS
+                    DropdownButtonFormField<int>(
+                      value: selectedMaxTeams,
+                      dropdownColor: const Color(0xFF1E2328),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: "Máx. Equipos", labelStyle: TextStyle(color: Colors.grey)),
+                      items: [4, 8, 16, 32].map((n) => DropdownMenuItem(value: n, child: Text("$n Equipos"))).toList(),
+                      onChanged: (val) => setDialogState(() => selectedMaxTeams = val!),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 4. FECHAS (Selectores)
+                    _buildDatePicker(
+                        "Cierre Inscripciones",
+                        dateInsc,
+                            (newDate) => setDialogState(() => dateInsc = newDate)
+                    ),
+                    const SizedBox(height: 10),
+                    _buildDatePicker(
+                        "Inicio Torneo",
+                        dateInicio,
+                            (newDate) => setDialogState(() => dateInicio = newDate)
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC9AA71)),
+                  onPressed: () async {
+                    if (nameController.text.isEmpty) return;
+
+                    // Validación simple de fechas
+                    if (dateInicio.isBefore(dateInsc)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("El torneo no puede empezar antes del cierre de inscripciones"), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+
+                    Navigator.pop(context); // Cerrar modal
+
+                    bool success = await ApiService.createTournament(
+                      name: nameController.text,
+                      region: selectedRegion,
+                      gameMode: selectedGameMode,
+                      maxTeams: selectedMaxTeams,
+                      fechaInscripciones: dateInsc,
+                      fechaInicio: dateInicio,
+                    );
+
+                    if (success) {
+                      _refreshData(); // <--- Recargar la lista de torneos
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Torneo creado con éxito"), backgroundColor: Colors.green),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Error al crear torneo"), backgroundColor: Colors.red),
+                      );
+                    }
+                  },
+                  child: const Text("CREAR", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDatePicker(String label, DateTime currentDate, Function(DateTime) onSelect) {
+
+    // Formateamos para que los minutos tengan siempre 2 dígitos (ej: 05, 00, 15)
+    String minuteStr = currentDate.minute.toString().padLeft(2, '0');
+    String hourStr = currentDate.hour.toString().padLeft(2, '0');
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        TextButton.icon(
+          icon: const Icon(Icons.calendar_today, size: 16, color: Color(0xFFC9AA71)),
+          label: Text(
+            // AQUÍ ESTABA EL ERROR: Ahora usamos las variables reales
+            "${currentDate.day}/${currentDate.month}  $hourStr:$minuteStr",
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          onPressed: () async {
+            // 1. Elegir Día
+            final pickedDate = await showDatePicker(
+              context: context,
+              initialDate: currentDate,
+              firstDate: DateTime.now(),
+              lastDate: DateTime(2030),
+              builder: (ctx, child) => Theme(
+                  data: ThemeData.dark().copyWith(
+                    colorScheme: const ColorScheme.dark(
+                      primary: Color(0xFFC9AA71), // Color del selector
+                      onPrimary: Colors.black,    // Color texto seleccionado
+                      surface: Color(0xFF1E2328), // Fondo calendario
+                    ),
+                  ),
+                  child: child!
+              ),
+            );
+
+            if (pickedDate == null) return;
+
+            // 2. Elegir Hora (Necesario si no el widget se desmonta)
+            if (!mounted) return;
+
+            final pickedTime = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.fromDateTime(currentDate),
+              builder: (ctx, child) => Theme(
+                  data: ThemeData.dark().copyWith(
+                    colorScheme: const ColorScheme.dark(
+                      primary: Color(0xFFC9AA71),
+                      onPrimary: Colors.black,
+                      surface: Color(0xFF1E2328),
+                    ),
+                  ),
+                  child: child!
+              ),
+            );
+
+            // 3. Combinar Fecha + Hora
+            if (pickedTime != null) {
+              // Creamos un nuevo DateTime con el día elegido y la hora elegida
+              final newDateTime = DateTime(
+                  pickedDate.year,
+                  pickedDate.month,
+                  pickedDate.day,
+                  pickedTime.hour,
+                  pickedTime.minute
+              );
+              onSelect(newDateTime);
+            } else {
+              // Si cancela la hora, guardamos al menos la fecha con hora 00:00
+              onSelect(DateTime(
+                  pickedDate.year,
+                  pickedDate.month,
+                  pickedDate.day,
+                  currentDate.hour,   // Mantenemos la hora que tenía antes
+                  currentDate.minute
+              ));
+            }
+          },
+        ),
+      ],
+    );
   }
 
   @override
@@ -1429,76 +1685,205 @@ class _TournamentViewState extends State<TournamentView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. MATCHES EN VIVO
-          const SectionHeader(title: "EN JUEGO AHORA"),
+
+          // --- 1. PARTIDO DESTACADO (LIVE) ---
+          // (Esto lo mantenemos fuera del filtro de torneos porque va por su propia API de matches)
+          const SectionHeader(title: "PARTIDO DESTACADO"),
           const SizedBox(height: 10),
           FutureBuilder<List<dynamic>>(
             future: _liveMatchesFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator(color: Color(0xFFD32F2F));
-              if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const LinearProgressIndicator(color: Color(0xFFC9AA71));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return Container(
-                  padding: const EdgeInsets.all(20),
-                  color: const Color(0xFF1E2328),
-                  child: const Center(child: Text("No hay partidos en vivo en el Torneo #1", style: TextStyle(color: Colors.grey))),
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.tv_off, color: Colors.grey),
+                      SizedBox(width: 10),
+                      Text("No hay partidos en directo.", style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
                 );
               }
-              // Mostramos solo el primer partido encontrado
-              var match = snapshot.data![0];
-              return _buildLiveMatchCard(match);
+              return _buildLiveMatchCard(snapshot.data![0]);
             },
           ),
 
           const SizedBox(height: 30),
 
-          // 2. HISTORIAL
-          const SectionHeader(title: "HALL OF FAME (EUW)"),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 140,
-            child: FutureBuilder<List<dynamic>>(
-              future: _historyFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (!snapshot.hasData || snapshot.data!.isEmpty) return const Text("Sin historial");
-
-                return ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: snapshot.data!.length,
-                  itemBuilder: (context, index) {
-                    var item = snapshot.data![index];
-                    return _buildHistoryCard(
-                      item['tournamentName'] ?? 'Torneo',
-                      item['winnerName'] ?? 'Desconocido',
-                      item['fechaInicio'] != null ? DateFormat('MMM yyyy').format(DateTime.parse(item['fechaInicio'])) : '-',
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-
-          const SizedBox(height: 30),
-
-          // 3. LISTA DE TORNEOS
-          const SectionHeader(title: "INSCRIPCIONES ABIERTAS"),
-          const SizedBox(height: 10),
+          // ============================================================
+          //    CARGA DE TODOS LOS TORNEOS (DIVISIÓN EN 3 LISTAS)
+          // ============================================================
           FutureBuilder<List<dynamic>>(
             future: _tournamentsFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              if (!snapshot.hasData) return const Text("Error cargando torneos");
+
+              // A. ESTADO DE CARGA
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Color(0xFFC9AA71)));
+              }
+
+              // B. ESTADO SIN DATOS
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Text("No hay información de torneos.", style: TextStyle(color: Colors.grey));
+              }
+
+              // C. FILTRADO DE LISTAS
+              final allList = snapshot.data!;
+
+              // 1. EN CURSO
+              final activeTournaments = allList.where((t) => t['status'] == 'EN_CURSO').toList();
+
+              // 2. FINALIZADOS (Hall of Fame)
+              final finishedTournaments = allList.where((t) => t['status'] == 'FINALIZADO').toList();
+
+              // 3. ABIERTOS (Inscripciones)
+              final openTournaments = allList.where((t) => t['status'] == 'ABIERTO' || t['status'] == 'CERRADO').toList();
+
 
               return Column(
-                children: snapshot.data!.map((t) => _buildTournamentRow(
-                  t['name'],
-                  t['region'],
-                  t['status'],
-                  "${t['currentRound'] ?? 0} Rondas", // Puedes cambiar esto por MaxTeams si lo traes
-                )).toList(),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  // -----------------------------------------------------
+                  // SECCIÓN 1: TORNEOS EN CURSO
+                  // -----------------------------------------------------
+                  if (activeTournaments.isNotEmpty) ...[
+                    const SectionHeader(title: "🏆 EN JUEGO"),
+                    const SizedBox(height: 10),
+                    ...activeTournaments.map((t) => _buildTournamentRow(
+                      t['name'],
+                      t['region'],
+                      t['status'],
+                      "Ronda ${t['currentRound'] ?? 1}",
+                    )),
+                    const SizedBox(height: 30),
+                  ],
+
+                  // -----------------------------------------------------
+                  // SECCIÓN 2: HALL OF FAME (Finalizados)
+                  // -----------------------------------------------------
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      SectionHeader(title: "🏛️ HALL OF FAME"),
+                      // Opcional: Icon(Icons.history, color: Color(0xFFC9AA71)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  if (finishedTournaments.isEmpty)
+                    Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white10),
+                            borderRadius: BorderRadius.circular(8)
+                        ),
+                        child: const Text("Aún no hay campeones coronados.", style: TextStyle(color: Colors.grey))
+                    )
+                  else
+                    SizedBox(
+                      height: 190,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: finishedTournaments.length,
+                        itemBuilder: (context, index) {
+                          final t = finishedTournaments[index];
+
+                          // ADAPTADOR DE DATOS:
+                          // La lista general trae el objeto 'winner' entero (JSON),
+                          // pero la tarjeta espera 'winnerName' (String). Lo mapeamos aquí:
+                          Map<String, dynamic> cardData = {
+                            'tournamentName': t['name'],
+                            'region': t['region'],
+                            'fechaInicio': t['fechaInicio'],
+                            // Accedemos a ['winner']['name'] con seguridad
+                            'winnerName': (t['winner'] != null && t['winner']['name'] != null)
+                                ? t['winner']['name']
+                                : 'Desconocido'
+                          };
+
+                          return Container(
+                            width: 320,
+                            margin: const EdgeInsets.only(right: 12),
+                            child: HallOfFameCard(tournament: cardData),
+                          );
+                        },
+                      ),
+                    ),
+
+                  const SizedBox(height: 30),
+
+                  // -----------------------------------------------------
+                  // SECCIÓN 3: INSCRIPCIONES ABIERTAS
+                  // -----------------------------------------------------
+                  const SectionHeader(title: "✍️ INSCRIPCIONES"),
+                  const SizedBox(height: 10),
+
+                  if (openTournaments.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      width: double.infinity,
+                      child: const Text("No hay inscripciones ahora mismo.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey)
+                      ),
+                    )
+                  else
+                    ...openTournaments.map((t) {
+                      final String infoText = (t['status'] == 'ABIERTO')
+                          ? "Inscripción ABIERTA hasta ${t['fechaInscripciones'].toString().replaceAll('T', ' ').substring(0, 16)}"
+                          : "Inicio Torneo : ${t['fechaInicio'].toString().replaceAll('T', ' ').substring(0, 16)}";
+
+                      // 2. Retornamos la fila con los datos procesados
+                      return _buildTournamentRow(
+                        t['name'],
+                        t['region'],
+                        t['status'],
+                        infoText, // Pasamos el texto ya construido
+                      );
+                    }),
+                ],
               );
             },
           ),
+
+          const SizedBox(height: 80),
+
+          const SizedBox(height: 40),
+
+          // --- BOTÓN SOLO VISIBLE PARA EL ADMIN ---
+          if (_isAdmin)
+            Center(
+              child: Container(
+                width: double.infinity,
+                height: 55,
+                margin: const EdgeInsets.only(bottom: 20),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E2328),
+                    foregroundColor: const Color(0xFFC9AA71),
+                    side: const BorderSide(color: Color(0xFFC9AA71), width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 5,
+                  ),
+                  onPressed: _showCreateTournamentDialog,
+                  icon: const Icon(Icons.add_moderator),
+                  label: const Text(
+                    "ADMIN PANEL: CREAR TORNEO",
+                    style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1578,32 +1963,71 @@ class _TournamentViewState extends State<TournamentView> {
   }
 
   Widget _buildTournamentRow(String name, String region, String status, String info) {
-    Color statusColor = status == "ABIERTO" ? Colors.green : (status == "FINALIZADO" ? Colors.grey : Colors.red);
+
+    // Color según el estado
+    Color statusColor = status == 'ABIERTO' ? Colors.green : Colors.orange;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF1E2328), borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(4),
+        // --- SOLUCIÓN A LA RAYA ROJA ---
+        border: const Border(
+          left: BorderSide(
+            color: Color(0xFFD32F2F), // Tu color rojo
+            width: 4,                 // Grosor de la línea
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.all(12),
       child: Row(
         children: [
-          Container(width: 4, height: 40, color: const Color(0xFFD32F2F)),
-          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Row(children: [
-                  Text(region, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-                  const SizedBox(width: 8),
-                  Text(info, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                ]),
+                // Fila 1: Nombre
+                Text(name,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)
+                ),
+                const SizedBox(height: 4),
+                // Fila 2: Región
+                Text(region,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70)
+                ),
+                const SizedBox(height: 4),
+                // Fila 3: Fecha (Sin la T)
+                Text(info,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey)
+                ),
               ],
             ),
           ),
-          Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+          // Etiqueta de estado a la derecha
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: statusColor.withOpacity(0.5)),
+            ),
+            child: Text(
+              status,
+              style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  void _refreshData() {
+    setState(() {
+      _historyFuture = ApiService.getHistory("EUW");
+      _tournamentsFuture = ApiService.getTournaments();
+      _liveMatchesFuture = ApiService.getCurrentMatches(1);
+    });
   }
 }
 

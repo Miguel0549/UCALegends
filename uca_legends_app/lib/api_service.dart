@@ -20,6 +20,76 @@ class ApiService {
     await _storage.write(key: 'refresh_token', value: refreshToken);
   }
 
+  static Future<http.Response?> get(String endpoint) async {
+    return await _authenticatedRequest('GET', endpoint);
+  }
+
+  static Future<http.Response?> post(String endpoint, Map<String, dynamic> body) async {
+    return await _authenticatedRequest('POST', endpoint, body: body);
+  }
+
+  static Future<http.Response?> delete(String endpoint, Map<String, dynamic> body) async {
+    return await _authenticatedRequest('DELETE', endpoint, body: body);
+  }
+
+  static Future<http.Response?> put(String endpoint, Map<String, dynamic> body) async {
+    return await _authenticatedRequest('PUT', endpoint, body: body);
+  }
+
+// --- EL "CEREBRO" DEL SILENT REFRESH ---
+  static Future<http.Response?> _authenticatedRequest(
+      String method,
+      String endpoint,
+      {Map<String, dynamic>? body}
+      ) async {
+    final url = Uri.parse('$baseUrl$endpoint');
+
+    // Función interna para no repetir código entre el primer intento y el reintento
+    Future<http.Response> makeRequest(String? token) async {
+      Map<String, String> headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+
+      switch (method) {
+        case 'POST':   return await http.post(url, headers: headers, body: jsonEncode(body));
+        case 'GET':    return await http.get(url, headers: headers);
+        case 'DELETE': return await http.delete(url, headers: headers, body: jsonEncode(body));
+        case 'PUT':    return await http.put(url, headers: headers, body: jsonEncode(body));
+        default:       return await http.get(url, headers: headers);
+      }
+    }
+
+    // 1. Primer intento
+    String? token = await getAccessToken();
+    http.Response response;
+    try {
+      response = await makeRequest(token);
+    } catch (e) {
+      return null; // Error de red
+    }
+
+    // 2. ¿Token caducado? (401)
+    if (response.statusCode == 401) {
+      print("Acceso denegado (401). Intentando refrescar...");
+
+      bool success = await _tryRefreshToken();
+
+      if (success) {
+        print("Refresco exitoso. Reintentando $method...");
+        // 3. SEGUNDO INTENTO (Ahora con el nuevo token)
+        String? newToken = await getAccessToken();
+        return await makeRequest(newToken); // ¡Aquí ya se manejan todos los métodos!
+      } else {
+        print("Sesión expirada definitivamente.");
+        await logout();
+        return response;// Sigue siendo 401
+      }
+    }
+
+    return response;
+  }
+
   static Future<void> logout() async {
     // 1. Recuperamos el token ANTES de borrar nada
     final token = await getAccessToken();
@@ -408,4 +478,89 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<List<dynamic>> getTournamentHistory() async {
+    final token = await getAccessToken();
+    try {
+      // Llamada al endpoint real. Forzamos 'EUW' por ahora.
+      final response = await http.get(
+        Uri.parse('$baseUrl/tournaments/history?region=EUW'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Decodificamos la lista de DTOs que envía Java
+        return jsonDecode(response.body);
+      } else {
+        print("Error historial: ${response.body}");
+        return [];
+      }
+    } catch (e) {
+      print("Excepción historial: $e");
+      return [];
+    }
+  }
+
+  // En ApiService.dart
+
+  static Future<bool> createTournament({
+    required String name,
+    required String region,
+    required String gameMode,
+    required int maxTeams,
+    required DateTime fechaInscripciones,
+    required DateTime fechaInicio,
+  }) async {
+    final token = await getAccessToken();
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tournaments/create'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          "name": name,
+          "region": region,
+          "gameMode": gameMode,
+          "maxTeams": maxTeams,
+          // Convertimos fechas a formato ISO para Java
+          "fechaInscripciones": fechaInscripciones.toIso8601String(),
+          "fechaInicio": fechaInicio.toIso8601String(),
+          // Status se pone en backend, Winner y Rondas son null/0 por defecto
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error creando torneo: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Excepción: $e");
+      return false;
+    }
+  }
+
+// Método para saber si es admin (si no lo tenías ya)
+  static Future<bool> isUserAdmin() async {
+    final token = await getAccessToken();
+    if (token == null) return false;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/users/me'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['role'] == 'ROLE_ADMIN';
+      }
+    } catch (_) {}
+    return false;
+  }
+
 }
