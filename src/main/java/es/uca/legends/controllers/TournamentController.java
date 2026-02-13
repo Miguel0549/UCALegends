@@ -3,6 +3,7 @@ package es.uca.legends.controllers;
 import es.uca.legends.dtos.TournamentHistoryDto;
 import es.uca.legends.entities.Tournament;
 import es.uca.legends.entities.User;
+import es.uca.legends.repositories.TournamentRegistrationRepository;
 import es.uca.legends.repositories.TournamentRepository;
 import es.uca.legends.services.TournamentService;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -19,6 +21,7 @@ import java.util.List;
 public class TournamentController {
 
     private final TournamentRepository tournamentRepository;
+    private final TournamentRegistrationRepository registrationRepository;
     private final TournamentService tournamentService;
 
     // --- General ---
@@ -29,13 +32,19 @@ public class TournamentController {
         return ResponseEntity.ok(tournamentRepository.findAll());
     }
 
+    @GetMapping("/{id}/count")
+    public ResponseEntity<Long> getInscribedCount(@PathVariable Long id) {
+        // Devuelve el conteo de la tabla de registros
+        return ResponseEntity.ok(registrationRepository.countByTournamentId(id));
+    }
+
     @GetMapping("/history")
-    public ResponseEntity<List<TournamentHistoryDto>> getHistory(@RequestParam String region) {
+    public ResponseEntity<?> getHistory(@RequestParam String region) {
         try {
             // Ejemplo de llamada: GET /api/tournaments/history?region=EUW
             return ResponseEntity.ok(tournamentService.getTournamentHistory(region));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
@@ -44,7 +53,7 @@ public class TournamentController {
         try {
             return ResponseEntity.ok(tournamentRepository.findById(id));
         } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 

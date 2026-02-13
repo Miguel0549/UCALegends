@@ -4,6 +4,7 @@ import 'package:intl/intl.dart'; // Para formatear fechas
 import 'api_service.dart'; // Importa el archivo que creamos arriba
 import 'splash_screen.dart';
 import 'HallOfFame.dart';
+import 'TournamentDeatailScreen.dart';
 
 void main() {
   runApp(LegendsApp());
@@ -1848,7 +1849,15 @@ class _TournamentViewState extends State<TournamentView> {
                         t['name'],
                         t['region'],
                         t['status'],
-                        infoText, // Pasamos el texto ya construido
+                        infoText,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TournamentDetailScreen(tournamentId: t['id']),
+                            ),
+                          );
+                        },
                       );
                     }),
                 ],
@@ -1962,62 +1971,62 @@ class _TournamentViewState extends State<TournamentView> {
     );
   }
 
-  Widget _buildTournamentRow(String name, String region, String status, String info) {
+  // 1. Añade el parámetro onTap a la función
+  Widget _buildTournamentRow(String name, String region, String status, String info, {VoidCallback? onTap}) {
 
-    // Color según el estado
     Color statusColor = status == 'ABIERTO' ? Colors.green : Colors.orange;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(4),
-        // --- SOLUCIÓN A LA RAYA ROJA ---
-        border: const Border(
-          left: BorderSide(
-            color: Color(0xFFD32F2F), // Tu color rojo
-            width: 4,                 // Grosor de la línea
+    // 2. Enuelve el Container en un InkWell
+    return InkWell(
+      onTap: onTap, // Se ejecuta la función al pulsar
+      borderRadius: BorderRadius.circular(4), // Para que el efecto visual coincida con el borde
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(4),
+          border: const Border(
+            left: BorderSide(
+              color: Color(0xFFD32F2F),
+              width: 4,
+            ),
           ),
         ),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Fila 1: Nombre
-                Text(name,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)
-                ),
-                const SizedBox(height: 4),
-                // Fila 2: Región
-                Text(region,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70)
-                ),
-                const SizedBox(height: 4),
-                // Fila 3: Fecha (Sin la T)
-                Text(info,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)
-                ),
-              ],
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)
+                  ),
+                  const SizedBox(height: 4),
+                  Text(region,
+                      style: const TextStyle(fontSize: 12, color: Colors.white70)
+                  ),
+                  const SizedBox(height: 4),
+                  Text(info,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)
+                  ),
+                ],
+              ),
             ),
-          ),
-          // Etiqueta de estado a la derecha
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: statusColor.withOpacity(0.5)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: statusColor.withOpacity(0.5)),
+              ),
+              child: Text(
+                status,
+                style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
             ),
-            child: Text(
-              status,
-              style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

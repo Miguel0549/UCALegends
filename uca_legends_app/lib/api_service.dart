@@ -564,6 +564,39 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>?> getTournamentById(int id) async {
+    final response = await get('/tournaments/$id');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(utf8.decode(response.bodyBytes));
+    }
+    return null;
+  }
+
+  static Future<int> getInscribedCount(int tournamentId) async {
+    final response = await get('/tournaments/$tournamentId/count');
+
+    if (response != null && response.statusCode == 200) {
+      // Como el body es solo un número (Long), lo parseamos directamente
+      return int.parse(response.body);
+    }
+    return 0;
+  }
+
+  static Future<String?> joinTournament(int id) async {
+    final response = await post('/tournaments/$id/join', {});
+
+    if (response != null) {
+      if (response.statusCode == 200) {
+        return "success"; // Inscripción correcta
+      } else {
+        // Devolvemos el mensaje de error que viene del backend (ej: "Ya estás inscrito")
+        return response.body;
+      }
+    }
+    return "Error de conexión";
+  }
+
   static Future<bool> isUserAdmin() async {
     try {
       final response = await get('/users/me');

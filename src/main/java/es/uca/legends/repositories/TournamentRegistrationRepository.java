@@ -24,5 +24,4 @@ public interface TournamentRegistrationRepository extends JpaRepository<Tourname
             "WHERE r.tournament.id = :tId AND r.team.id = :teamId")
     boolean hasReceivedBye(@Param("tId") Long tournamentId, @Param("teamId") Long teamId);
 
-
 }
