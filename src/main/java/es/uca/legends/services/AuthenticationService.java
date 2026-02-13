@@ -91,10 +91,14 @@ public class AuthenticationService {
             throw new RuntimeException("Token invalido.");
 
         String accessToken = jwtService.generateToken(refreshJwT.user);
+        String refreshToken = jwtService.generateRefreshToken(refreshJwT.user);
+
+        revokeAllUserTokens(refreshJwT.user);
 
         saveUserToken(refreshJwT.user,accessToken);
+        saveRefreshToken(refreshJwT.user,refreshToken);
 
-        return new AuthenticationResponse(accessToken,RefreshToken);
+        return new AuthenticationResponse(accessToken,refreshToken);
     }
 
     private void saveUserToken(User user, String jwtToken) {
