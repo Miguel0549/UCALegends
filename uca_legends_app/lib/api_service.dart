@@ -611,6 +611,15 @@ class ApiService {
     }
   }
 
+  static Future<String?> reportMatchResult(int matchId, String riotMatchId) async {
+    final response = await post('/matches/$matchId/report', {'riotMatchId': riotMatchId});
+    if (response != null) {
+      if (response.statusCode == 200) return "success";
+      return response.body; // Mensaje de error (ej: "Solo líderes pueden reportar")
+    }
+    return "Error de red";
+  }
+
   static Future<bool> isUserAdmin() async {
     try {
       final response = await get('/users/me');

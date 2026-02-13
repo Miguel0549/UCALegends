@@ -46,6 +46,7 @@ public class MatchmakingService {
                     .teamA(byeTeam)
                     .teamB(null)
                     .round(roundNumber)
+                    .riotMatchId("EUW_"+tournament.getId() + "_" + byeTeam.getId() + "_" + "BYE_" + roundNumber)
                     .matchDate(calculateMatchDate(tournament, roundNumber))
                     .winner(byeTeam)   // Gana directamente
                     .status("FINISHED")
@@ -71,6 +72,7 @@ public class MatchmakingService {
                     .teamA(team1)
                     .teamB(team2)
                     .round(roundNumber)
+                    .riotMatchId("EUW_"+tournament.getId() + "_" + team1.getId() + "_" + team2.getId() + "_" + roundNumber)
                     .matchDate(null)
                     .status("SCHEDULED")
                     .build();

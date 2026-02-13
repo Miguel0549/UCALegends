@@ -1,12 +1,16 @@
 package es.uca.legends.controllers;
 import es.uca.legends.entities.Match;
+import es.uca.legends.entities.User;
+import es.uca.legends.services.MatchService;
 import es.uca.legends.services.TournamentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tournaments/{tournamentId}/matches")
@@ -48,4 +52,5 @@ public class MatchmakingController {
         // Implementar lógica para devolver todos los partidos del torneo
         return ResponseEntity.ok().build(); // TODO
     }
+
 }

@@ -67,7 +67,7 @@ class _SplashScreenState extends State<SplashScreen> {
             const Icon(Icons.shield, size: 100, color: Color(0xFFD32F2F)),
             const SizedBox(height: 20),
             const Text(
-              "LEGENDS APP",
+              "UCALEGENDS APP",
               style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,
