@@ -79,8 +79,9 @@ public class AuthenticationService {
                 .build();
     }
 
-    public AuthenticationResponse refresh(String RefreshToken){
+    public synchronized AuthenticationResponse refresh(String RefreshToken){
 
+        System.out.println("------------------------------ REFRESH ---------------------------------------------------");
         Token refreshJwT = tokenRepository.findByJwtToken(RefreshToken).orElseThrow();
 
         if (refreshJwT.tipo != Token.TokenType.REFRESH)

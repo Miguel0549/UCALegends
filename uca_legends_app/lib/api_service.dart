@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -28,8 +29,8 @@ class ApiService {
     return await _authenticatedRequest('POST', endpoint, body: body);
   }
 
-  static Future<http.Response?> delete(String endpoint, Map<String, dynamic> body) async {
-    return await _authenticatedRequest('DELETE', endpoint, body: body);
+  static Future<http.Response?> delete(String endpoint) async {
+    return await _authenticatedRequest('DELETE', endpoint);
   }
 
   static Future<http.Response?> put(String endpoint, Map<String, dynamic> body) async {
@@ -48,7 +49,7 @@ class ApiService {
     Future<http.Response> makeRequest(String? token) async {
       Map<String, String> headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
+        'Authorization': 'Bearer ${token ?? ""}',
       };
 
       switch (method) {
@@ -60,8 +61,9 @@ class ApiService {
       }
     }
 
-    // 1. Primer intento
     String? token = await getAccessToken();
+
+    // 1. Primer intento
     http.Response response;
     try {
       response = await makeRequest(token);
@@ -70,10 +72,10 @@ class ApiService {
     }
 
     // 2. ¿Token caducado? (401)
-    if (response.statusCode == 401) {
+    if (response.statusCode == 401 || response.statusCode == 403) {
       print("Acceso denegado (401). Intentando refrescar...");
 
-      bool success = await _tryRefreshToken();
+      bool success = await tryRefreshToken();
 
       if (success) {
         print("Refresco exitoso. Reintentando $method...");
@@ -82,7 +84,6 @@ class ApiService {
         return await makeRequest(newToken); // ¡Aquí ya se manejan todos los métodos!
       } else {
         print("Sesión expirada definitivamente.");
-        await logout();
         return response;// Sigue siendo 401
       }
     }
@@ -119,7 +120,9 @@ class ApiService {
 
   static Future<bool> verifyToken() async {
     final token = await getAccessToken();
-    if (token == null) return false;
+    if (token == null) {
+      return false;
+    }
 
     try {
       final response = await http.get(
@@ -171,27 +174,55 @@ class ApiService {
 
   // --- SISTEMA DE PETICIONES AUTENTICADAS (CORE) ---
 
-  static Future<bool> _tryRefreshToken() async {
-    final refreshToken = await getRefreshToken();
-    if (refreshToken == null) return false;
+  static Completer<bool>? _refreshCompleter;
 
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/refresh-token'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'refreshToken': refreshToken}),
-    );
+  static Future<bool> tryRefreshToken() async {
+    // 2. Si ya hay alguien refrescando, NO LLAMES AL SERVIDOR. Espera al que ya está en camino.
+    if (_refreshCompleter != null) {
+      print("Ya hay un refresco en curso. Esperando...");
+      return _refreshCompleter!.future;
+    }
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      String newAccess = data['access_token'];
-      String newRefresh = data['refresh_token'] ?? refreshToken;
-      await _saveTokens(newAccess, newRefresh);
-      return true;
-    } else {
-      await logout();
+    // 3. Soy el primero en llegar, creo la sala de espera
+    _refreshCompleter = Completer<bool>();
+
+    try {
+      final refreshToken = await getRefreshToken();
+      if (refreshToken == null) {
+        _refreshCompleter!.complete(false); // Aviso a los que esperan que falló
+        _refreshCompleter = null; // Libero la sala
+        await logout();
+        return false;
+      }
+
+      print("Llamando al servidor para refrescar token...");
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/refresh-token'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': refreshToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        await _saveTokens(data['access_token'], data['refresh_token'] ?? refreshToken);
+
+        // 4. ¡Éxito! Aviso a todos los que estaban esperando (B y C)
+        _refreshCompleter!.complete(true);
+        _refreshCompleter = null; // Muy importante ponerlo a null para la próxima vez que caduque
+        return true;
+      } else {
+        _refreshCompleter!.complete(false);
+        _refreshCompleter = null;
+        await logout();
+        return false;
+      }
+    } catch (e) {
+      _refreshCompleter?.complete(false);
+      _refreshCompleter = null;
       return false;
     }
   }
+
 
   // Wrapper genérico para GET
   static Future<dynamic> _authenticatedGet(String endpoint) async {
@@ -206,7 +237,7 @@ class ApiService {
     );
 
     if (response.statusCode == 403 || response.statusCode == 401) {
-      final refreshed = await _tryRefreshToken();
+      final refreshed = await tryRefreshToken();
       if (refreshed) {
         token = await getAccessToken();
         response = await http.get(
@@ -230,101 +261,123 @@ class ApiService {
   // --- MÉTODOS DE DATOS ---
 
   static Future<List<dynamic>> getHistory(String region) async {
-    final data = await _authenticatedGet('/tournaments/history?region=$region');
-    return data is List ? data : [];
+    final response = await get('/tournaments/history?region=$region');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    return [];
   }
 
   static Future<List<dynamic>> getTournaments() async {
-    final data = await _authenticatedGet('/tournaments/');
-    return data is List ? data : [];
+    final response = await get('/tournaments/');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    return [];
   }
 
   static Future<List<dynamic>> getCurrentMatches(int tournamentId) async {
-    final data = await _authenticatedGet('/tournaments/$tournamentId/matches/current');
-    return data is List ? data : [];
+    final response = await get('/tournaments/$tournamentId/matches/current');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    return [];
   }
 
   // --- PERFIL Y JUGADOR ---
 
   static Future<Map<String, dynamic>?> getMe() async {
-    final data = await _authenticatedGet('/users/me');
-    return data is Map<String, dynamic> ? data : null;
+    final response = await get('/users/me');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(response.body); // Devuelve el List
+    }
+
+    return null;
   }
 
   static Future<Map<String, dynamic>?> getProfileUser( int id ) async {
-    final data = await _authenticatedGet('/users/$id');
-    return data is Map<String, dynamic> ? data : null;
+    final response = await get('/users/$id');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(response.body); // Devuelve el List
+    }
+
+    return null;
   }
 
   static Future<bool> createDevPlayer(Map<String, dynamic> playerData) async {
-    final token = await getAccessToken();
-    final response = await http.post(
-      Uri.parse('$baseUrl/players/dev/link'), // Asegúrate que la ruta coincide con Java
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(playerData),
-    );
+    final response = await post('/players/dev/link',playerData);
 
-    if (response.statusCode == 200) {
-      return true;
-    } else {
-      print("Error linking: ${response.body}");
-      return false;
+    if ( response != null ){
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error linking: ${response.body}");
+        return false;
+      }
     }
+
+    return false;
+
   }
 
   static Future<bool> unlinkRiotAccount() async {
-    final token = await getAccessToken();
-    final response = await http.delete(
-      Uri.parse('$baseUrl/players/dev/unlink'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    return response.statusCode == 200;
+    final response = await delete('/players/dev/unlink');
+    if ( response != null ) return response.statusCode == 200;
+    return false;
   }
 
   // --- EQUIPOS (LOS QUE TE FALTABAN) ---
 
   // 1. Obtener todos los equipos (para el buscador)
   static Future<List<dynamic>> getAllTeams() async {
-    // Nota: Asegúrate de haber añadido el endpoint @GetMapping("/") en TeamController
-    // Si no lo hiciste, añade el método en Java o usa otro endpoint que devuelva lista.
-    final data = await _authenticatedGet('/teams/');
-    return data is List ? data : [];
+    final response = await get('/teams/');
+
+    if (response != null && response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    return [];
   }
 
   // 2. Crear Equipo
   static Future<bool> createTeam(String name, String tag, String region) async {
-    final token = await getAccessToken();
-    final response = await http.post(
-      Uri.parse('$baseUrl/teams/create'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({
-        'name': name,
-        'tag': tag,
-        'region': region
-      }),
-    );
-    return response.statusCode == 200;
+
+    Map<String,dynamic> body = new Map.of({
+      'name': name,
+      'tag': tag,
+      'region': region});
+
+    final response = await post('/teams/create', body);
+
+    if ( response != null ){
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error creating team: ${response.body}");
+        return false;
+      }
+    }
+
+    return false;
   }
 
   static Future<List<dynamic>> getTeamMembers(int teamId) async {
     try {
-      final response = await _authenticatedGet('/teams/$teamId/members');
+      final response = await get('/teams/$teamId/members');
 
-      // Si la respuesta es una lista, la devolvemos directamente
-      if (response is List) {
-        return response;
-      } else {
-        return [];
+      if (response != null && response.statusCode == 200) {
+        return jsonDecode(response.body);
       }
+
+      return [];
     } catch (e) {
       print("Error obteniendo miembros: $e");
       return [];
@@ -333,15 +386,18 @@ class ApiService {
 
   // 4. Salir de Equipo
   static Future<bool> leaveTeam() async {
-    final token = await getAccessToken();
-    final response = await http.post(
-      Uri.parse('$baseUrl/teams/leave'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    return response.statusCode == 200;
+    final response = await post('/teams/leave',<String,dynamic>{});
+
+    if ( response != null ){
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("Error leaving team: ${response.body}");
+        return false;
+      }
+    }
+
+    return false;
   }
 
   // -----------------------------------------------------------------------
@@ -351,22 +407,20 @@ class ApiService {
   // 1. SOLICITAR UNIRSE A UN EQUIPO
   // El usuario envía una petición al líder del equipo
   static Future<bool> requestJoinTeam(int teamId) async {
-    final token = await getAccessToken();
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/teams/$teamId/request'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await post('/teams/$teamId/request', <String,dynamic>{});
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        print("Error al solicitar unirse: ${response.body}");
-        return false;
+      if ( response != null ){
+        if (response.statusCode == 200) {
+          return true;
+        } else {
+          print("Error request team: ${response.body}");
+          return false;
+        }
       }
+
+      return false;
+
     } catch (e) {
       print("Excepción solicitando unirse: $e");
       return false;
@@ -374,22 +428,20 @@ class ApiService {
   }
 
   static Future<bool> transferLeadership(int newLeaderId) async {
-    final token = await getAccessToken();
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/teams/leader/$newLeaderId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await post('/teams/leader/$newLeaderId',<String,dynamic>{});
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        print("Error transfiriendo liderazgo: ${response.body}");
-        return false;
+      if ( response != null ){
+        if (response.statusCode == 200) {
+          return true;
+        } else {
+          print("Error transfering leadership: ${response.body}");
+          return false;
+        }
       }
+
+      return false;
+
     } catch (e) {
       print("Excepción transfiriendo liderazgo: $e");
       return false;
@@ -397,32 +449,18 @@ class ApiService {
   }
 
   static Future<bool> dissolveTeam() async {
-    final token = await getAccessToken();
-    final response = await http.delete(
-      Uri.parse('$baseUrl/teams/delete'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return response.statusCode == 200;
+    final response = await delete('/teams/delete');
+    if ( response != null ) return response.statusCode == 200;
+    return false;
   }
 
   // 2. ECHAR A UN MIEMBRO (Solo Líder)
   static Future<bool> kickMember(int playerId) async {
-    final token = await getAccessToken();
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/teams/kick/$playerId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await delete('/teams/kick/$playerId');
+      if ( response != null ) return response.statusCode == 200;
+      return false;
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        print("Error al expulsar miembro: ${response.body}");
-        return false;
-      }
     } catch (e) {
       print("Excepción al expulsar: $e");
       return false;
@@ -431,22 +469,15 @@ class ApiService {
 
   // 3. OBTENER LISTA DE SOLICITUDES PENDIENTES (Solo Líder)
   static Future<List<dynamic>> getTeamRequests() async {
-    final token = await getAccessToken();
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/teams/requests'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await get('/teams/requests');
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body); // Devuelve la lista de solicitudes
-      } else {
-        print("Error obteniendo solicitudes: ${response.body}");
-        return [];
+      if (response != null && response.statusCode == 200) {
+        return jsonDecode(response.body);
       }
+
+      return [];
+
     } catch (e) {
       print("Excepción obteniendo solicitudes: $e");
       return [];
@@ -455,24 +486,22 @@ class ApiService {
 
   // 4. RESPONDER A UNA SOLICITUD (Aceptar o Rechazar)
   static Future<bool> respondRequest(int requestId, bool accept) async {
-    final token = await getAccessToken();
     final action = accept ? "accept" : "reject";
 
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/teams/requests/$requestId/$action'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await post('/teams/requests/$requestId/$action',<String,dynamic>{});
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        print("Error respondiendo solicitud: ${response.body}");
-        return false;
+      if ( response != null ){
+        if (response.statusCode == 200) {
+          return true;
+        } else {
+          print("Error responding request: ${response.body}");
+          return false;
+        }
       }
+
+      return false;
+
     } catch (e) {
       print("Excepción respondiendo solicitud: $e");
       return false;
@@ -483,28 +512,19 @@ class ApiService {
     final token = await getAccessToken();
     try {
       // Llamada al endpoint real. Forzamos 'EUW' por ahora.
-      final response = await http.get(
-        Uri.parse('$baseUrl/tournaments/history?region=EUW'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await get('/tournaments/history?region=EUW');
 
-      if (response.statusCode == 200) {
-        // Decodificamos la lista de DTOs que envía Java
+      if (response != null && response.statusCode == 200) {
         return jsonDecode(response.body);
-      } else {
-        print("Error historial: ${response.body}");
-        return [];
       }
+
+      return [];
+
     } catch (e) {
       print("Excepción historial: $e");
       return [];
     }
   }
-
-  // En ApiService.dart
 
   static Future<bool> createTournament({
     required String name,
@@ -514,48 +534,41 @@ class ApiService {
     required DateTime fechaInscripciones,
     required DateTime fechaInicio,
   }) async {
-    final token = await getAccessToken();
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/tournaments/create'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          "name": name,
-          "region": region,
-          "gameMode": gameMode,
-          "maxTeams": maxTeams,
-          // Convertimos fechas a formato ISO para Java
-          "fechaInscripciones": fechaInscripciones.toIso8601String(),
-          "fechaInicio": fechaInicio.toIso8601String(),
-          // Status se pone en backend, Winner y Rondas son null/0 por defecto
-        }),
-      );
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        print("Error creando torneo: ${response.body}");
-        return false;
+
+    Map<String,dynamic> body = Map.of({
+      "name": name,
+      "region": region,
+      "gameMode": gameMode,
+      "maxTeams": maxTeams,
+      "fechaInscripciones": fechaInscripciones.toIso8601String(),
+      "fechaInicio": fechaInicio.toIso8601String(),});
+
+    try {
+      final response = await post('/tournaments/create',body);
+
+      if ( response != null ){
+        if (response.statusCode == 200) {
+          return true;
+        } else {
+          print("Error creating tournament: ${response.body}");
+          return false;
+        }
       }
+
+      return false;
+
     } catch (e) {
       print("Excepción: $e");
       return false;
     }
   }
 
-// Método para saber si es admin (si no lo tenías ya)
   static Future<bool> isUserAdmin() async {
-    final token = await getAccessToken();
-    if (token == null) return false;
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/users/me'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-      if (response.statusCode == 200) {
+      final response = await get('/users/me');
+
+      if (response != null && response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['role'] == 'ROLE_ADMIN';
       }

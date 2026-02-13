@@ -36,8 +36,16 @@ class _SplashScreenState extends State<SplashScreen> {
           MaterialPageRoute(builder: (context) => const MainScreen())
       );
     } else {
-      // TOKEN INVALIDO O EXPIRADO -> BORRAR Y LOGIN
-      await ApiService.logout(); // Esto borra el secure storage
+
+      bool success = await ApiService.tryRefreshToken();
+
+      if ( success){
+        Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainScreen())
+        );
+        return;
+      }
 
       if (!mounted) return;
       Navigator.pushReplacement(

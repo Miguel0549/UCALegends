@@ -266,19 +266,14 @@ public class TeamService {
             double totalScore = 0;
             int count = 0;
 
-            System.out.println("-----------------------------------------------------------------------");
-
             for (Player p : members) {
                 double puntosJugador = getTierValue(p.getTier()) + getDivisionValue(p.getDivision()) + (0.002 * p.getLeaguePoints());
-                System.out.println("Puntuacion " + p.getRiotIdName() + ": " + puntosJugador );
                 totalScore += puntosJugador;
                 count++;
             }
 
 
             double average = (count > 0) ? totalScore / count : 0;
-            System.out.println("Puntuacion Total : " + totalScore + " / " + count + "= " + average );
-            System.out.println("-----------------------------------------------------------------------");
             team.setAverageScore(average);
 
             if (average <= 4.0) { // Hierro, Bronce, Plata, Oro

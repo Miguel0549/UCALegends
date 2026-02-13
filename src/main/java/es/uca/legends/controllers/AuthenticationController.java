@@ -6,6 +6,7 @@ import es.uca.legends.entities.User;
 import es.uca.legends.repositories.UserRepository;
 import es.uca.legends.services.AuthenticationService;
 import es.uca.legends.services.JwtService;
+import io.jsonwebtoken.ExpiredJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -37,7 +38,7 @@ public class AuthenticationController {
     }
 
     @GetMapping("/verify")
-    public ResponseEntity<Void> verify(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<Void> verify(@RequestHeader("Authorization") String authHeader) throws ExpiredJwtException {
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return ResponseEntity.status(403).build();
