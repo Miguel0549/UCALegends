@@ -30,15 +30,6 @@ public class TeamController {
     public ResponseEntity<?> getAllTeams() {
 
         List<Team> teams = teamRepository.findAll();
-
-        System.out.println("--------------------------------------------------------------------------------------------");
-        System.out.println("Cargados " + teams.size() + " equipos.");
-        for ( Team t : teams){
-            System.out.println("--------");
-            System.out.println("Equipo:" + t);
-            System.out.println("--------");
-        }
-        System.out.println("--------------------------------------------------------------------------------------------\n");
         return ResponseEntity.ok(teams);
     }
 
@@ -159,18 +150,7 @@ public class TeamController {
         teamService.respondToRequest(user, requestId, action.equalsIgnoreCase("accept"));
         return ResponseEntity.ok("Respuesta procesada.");
     }
-    /*
-    @PostMapping("/{teamId}/join")
-    public ResponseEntity<?> joinTeam(@AuthenticationPrincipal User user, @PathVariable Long teamId)
-    {
-        try {
-            teamService.joinTeam(user, teamId);
-            return ResponseEntity.ok("Te has unido al equipo correctamente.");
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-    */
+
     @PostMapping("/leave")
     public ResponseEntity<?> leaveTeam(@AuthenticationPrincipal User user)
     {

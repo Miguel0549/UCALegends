@@ -71,7 +71,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
                 const SizedBox(height: 24),
 
                 // Card de Estadísticas
-                _buildStatsCard(torneo['gameMode'], status),
+                _buildStatsCard(status),
                 const SizedBox(height: 24),
 
                 // Información Detallada
@@ -150,7 +150,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
     );
   }
 
-  Widget _buildStatsCard(String? mode, String status) {
+  Widget _buildStatsCard(String status) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -161,7 +161,6 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem("MODO", mode ?? "5V5"),
           _statItem("ESTADO", status, color: status == 'ABIERTO' ? Colors.green : Colors.orange),
         ],
       ),

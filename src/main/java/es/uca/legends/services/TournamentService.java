@@ -159,6 +159,10 @@ public class TournamentService {
         Tournament tournament = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new RuntimeException("Torneo no encontrado"));
 
+        if (tournament.getCurrentRound() == null) {
+            tournament.setCurrentRound(0);
+        }
+
         // 1. Validar que la ronda actual ha terminado
         if (tournament.getCurrentRound() > 0) {
             boolean unfinishedMatches = matchRepository.existsByTournamentAndRoundAndStatusNot(
@@ -178,6 +182,7 @@ public class TournamentService {
         if (tournament.getCurrentRound() == 0) {
             // CASO ESPECIAL: Si es la ronda 0, pasamos a Ronda 1 con TODOS los inscritos
             winners = registrationRepository.findTeamsByTournamentId(tournamentId);
+            if ( winners.isEmpty() || winners.size() < 5 ) throw new RuntimeException("No hay equipos suficientes para empezar el torneo");
             tournament.setStatus("EN_CURSO");
         } else {
             // CASO NORMAL: Buscamos los ganadores de la ronda que acaba de terminar

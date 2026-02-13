@@ -276,13 +276,13 @@ public class TeamService {
             double average = (count > 0) ? totalScore / count : 0;
             team.setAverageScore(average);
 
-            if (average <= 4.0) { // Hierro, Bronce, Plata, Oro
+            if (average <= 3.0) { // Hierro, Bronce, Plata
+                team.setDivision("IV");
+            } else if (average <= 5.0) { // Oro ,Platino,
                 team.setDivision("III");
-            } else if (average <= 7.0) { // Platino, Esmeralda, Diamante
+            } else if (average <= 7) { // Esmeralda, Diamante
                 team.setDivision("II");
-            } else { // Master, GM, Challenger
-                team.setDivision("I");
-            }
+            } else team.setDivision("I");
         }
 
 

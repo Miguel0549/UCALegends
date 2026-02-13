@@ -30,7 +30,8 @@ public class TournamentRegistration {
     @Column(name = "RegisteredAt")
     private LocalDateTime registeredAt;
 
+    @Builder.Default
     @Column(name = "HasReceivedBye")
-    private Boolean hasReceivedBye;
+    private Boolean hasReceivedBye = false;
 
 }

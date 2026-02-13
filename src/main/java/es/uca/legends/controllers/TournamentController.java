@@ -1,8 +1,10 @@
 package es.uca.legends.controllers;
 
 import es.uca.legends.dtos.TournamentHistoryDto;
+import es.uca.legends.entities.Match;
 import es.uca.legends.entities.Tournament;
 import es.uca.legends.entities.User;
+import es.uca.legends.repositories.MatchRepository;
 import es.uca.legends.repositories.TournamentRegistrationRepository;
 import es.uca.legends.repositories.TournamentRepository;
 import es.uca.legends.services.TournamentService;
@@ -23,6 +25,7 @@ public class TournamentController {
     private final TournamentRepository tournamentRepository;
     private final TournamentRegistrationRepository registrationRepository;
     private final TournamentService tournamentService;
+    private final MatchRepository matchRepository;
 
     // --- General ---
 
@@ -56,6 +59,14 @@ public class TournamentController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    // Partidas
+
+    @GetMapping("/{id}/matches")
+    public ResponseEntity<List<Match>> getTournamentMatches(@PathVariable Long id) {
+        return ResponseEntity.ok(matchRepository.findByTournamentIdOrderByRoundAsc(id));
+    }
+
 
     // --- ADMIN ---
 

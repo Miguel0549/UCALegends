@@ -14,6 +14,7 @@ import java.util.List;
 public class TournamentScheduler {
 
     private final TournamentRepository tournamentRepository;
+    private final TournamentService tournamentService;
 
     // Se ejecuta cada 60000ms (1 minuto)
     @Scheduled(fixedRate = 60000)
@@ -39,18 +40,28 @@ public class TournamentScheduler {
     @Transactional
     public void beginTournament() {
 
-        List<Tournament> toClose = tournamentRepository.findAllByStatusAndFechaInicioBefore(
+        List<Tournament> toBegin = tournamentRepository.findAllByStatusAndFechaInicioBefore(
                 "CERRADO",
                 LocalDateTime.now()
         );
 
-        if (toClose.isEmpty()) return;
+        if (toBegin.isEmpty()) return;
 
-        for (Tournament t : toClose) {
-            t.setStatus("EN_CURSO");
-            System.out.println("Empezando el torneo: " + t.getName());
+        for (Tournament t : toBegin) {
+            try {
+                System.out.println("Iniciando generación de cuadro para el torneo: " + t.getName());
+
+                tournamentService.advanceToNextRound(t.getId());
+
+                System.out.println("Torneo {} iniciado con éxito :" + t.getName());
+
+            } catch (Exception e) {
+                System.out.println("Error al iniciar el torneo " + t.getName() + ": " + e.getMessage());
+                t.setStatus("CANCELADO");
+                tournamentRepository.save(t);
+            }
         }
 
-        tournamentRepository.saveAll(toClose);
+        tournamentRepository.saveAll(toBegin);
     }
 }

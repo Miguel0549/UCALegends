@@ -12,14 +12,13 @@ public class TokenCleanupService {
 
     private final TokenRepository tokenRepository;
 
-    @Scheduled(fixedRate = 10000/*1200000*/)
+    @Scheduled(cron = "0 0 0 * * *",zone = "Europe/Madrid")
     public void removeExpiredTokens() {
         tokenRepository.deleteAllExpiredOrRevokedTokens();
         System.out.println("Limpieza de tokens finalizada."); // Log para que lo veas en consola
     }
 
-    //@Scheduled(cron = "0 0 * * * *")
-    @Scheduled(fixedRate = 10000)
+    @Scheduled(cron = "0 0 * * * *",zone = "Europe/Madrid")
     public void cleanExpiredTokens() {
         System.out.println("Iniciando tarea de limpieza de tokens caducados...");
 

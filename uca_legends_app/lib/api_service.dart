@@ -597,6 +597,20 @@ class ApiService {
     return "Error de conexión";
   }
 
+  static Future<List<dynamic>> getTournamentMatches(int tournamentId) async {
+    try {
+      final response = await get('/tournaments/$tournamentId/matches');
+
+      if (response != null && response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+      return [];
+    } catch (e) {
+      print("Error obteniendo matches: $e");
+      return [];
+    }
+  }
+
   static Future<bool> isUserAdmin() async {
     try {
       final response = await get('/users/me');

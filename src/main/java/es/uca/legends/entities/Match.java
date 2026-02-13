@@ -48,6 +48,6 @@ public class Match {
     private LocalDateTime matchDate;
 
     @Column(name = "Status")
-    private String status;
+    private String status; // SCHEDULED, FINISHED
 
 }

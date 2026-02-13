@@ -35,6 +35,7 @@ public class Tournament {
     @Column(name = "MaxTeams")
     private Integer maxTeams;
 
+    @Builder.Default
     @Column(name = "CurrentRound")
     private Integer currentRound = 0;
 

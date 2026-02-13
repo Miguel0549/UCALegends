@@ -5,6 +5,7 @@ import 'api_service.dart'; // Importa el archivo que creamos arriba
 import 'splash_screen.dart';
 import 'HallOfFame.dart';
 import 'TournamentDeatailScreen.dart';
+import 'Tournament_Bracket_Screen.dart';
 
 void main() {
   runApp(LegendsApp());
@@ -546,7 +547,7 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const Icon(Icons.shield, size: 80, color: Color(0xFFD32F2F)),
             const SizedBox(height: 20),
-            const Text("LEGENDS ID", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            const Text("UCALEGENDS ID", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
             const SizedBox(height: 40),
             TextField(
               controller: _emailController,
@@ -615,7 +616,7 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             const Icon(Icons.shield, color: Color(0xFFD32F2F)),
             const SizedBox(width: 8),
-            Text('LEGENDS CUP', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.white.withOpacity(0.9))),
+            Text('UCALEGENDS CUP', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.white.withOpacity(0.9))),
           ],
         ),
         actions: [
@@ -834,7 +835,7 @@ class _TeamViewState extends State<TeamView> {
                       ),
                     ),
 
-                  const Align(alignment: Alignment.centerLeft, child: Text("ROSTER", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.5))),
+                  const Align(alignment: Alignment.centerLeft, child: Text("INTEGRANTES", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.5))),
                   const SizedBox(height: 10),
 
                   if (members.isEmpty) const Text("No hay miembros visibles.", style: TextStyle(color: Colors.white)),
@@ -1763,6 +1764,14 @@ class _TournamentViewState extends State<TournamentView> {
                       t['region'],
                       t['status'],
                       "Ronda ${t['currentRound'] ?? 1}",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TournamentBracketScreen(tournamentId: t['id']),
+                          ),
+                        );
+                      },
                     )),
                     const SizedBox(height: 30),
                   ],
