@@ -8,6 +8,7 @@ import es.uca.legends.repositories.MatchRepository;
 import es.uca.legends.repositories.TournamentRegistrationRepository;
 import es.uca.legends.repositories.TournamentRepository;
 import es.uca.legends.services.TournamentService;
+import es.uca.legends.services.TournamentUpdateFunctions;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +25,7 @@ public class TournamentController {
 
     private final TournamentRepository tournamentRepository;
     private final TournamentRegistrationRepository registrationRepository;
+    private final TournamentUpdateFunctions tournamentUpdateFunctions;
     private final TournamentService tournamentService;
     private final MatchRepository matchRepository;
 
@@ -74,7 +76,7 @@ public class TournamentController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> createTournament(@RequestBody Tournament tournament) {
         try {
-            return ResponseEntity.ok(tournamentService.createTournament(tournament));
+            return ResponseEntity.ok(tournamentUpdateFunctions.createTournament(tournament));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -124,7 +126,7 @@ public class TournamentController {
                 throw new RuntimeException("Estado inválido.");
             }
 
-            tournamentService.updateTournamentStatus(id, status);
+            tournamentUpdateFunctions.updateTournamentStatus(id, status);
             return ResponseEntity.ok("Estado del torneo actualizado a: " + status);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

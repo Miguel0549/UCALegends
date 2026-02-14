@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart'; // Para formatear fechas
 import 'api_service.dart'; // Importa el archivo que creamos arriba
@@ -201,9 +202,35 @@ class _ProfileViewState extends State<ProfileView> {
                 // --- FILA 1: NOMBRE Y TAG ---
                 Row(
                   children: [
-                    Expanded(flex: 2, child: TextField(controller: nameController, style: const TextStyle(color: Colors.white), decoration: buildDecor("Riot ID", Icons.person))),
+                    Expanded(
+                        flex: 2,
+                        child: TextField(
+                            controller: nameController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: buildDecor("Riot ID", Icons.person)
+                        )
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(flex: 1, child: TextField(controller: tagController, style: const TextStyle(color: Colors.white), decoration: buildDecor("TAG", Icons.tag))),
+                    Expanded(
+                        flex: 1,
+                        child: TextField(
+                            controller: tagController,
+                            maxLength: 3, // Límite estricto de 3 caracteres
+                            inputFormatters: [
+                              // 1. Solo permite letras
+                              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z]')),
+                              // 2. Convierte automáticamente a mayúsculas mientras el usuario escribe
+                              TextInputFormatter.withFunction((oldValue, newValue) {
+                                return newValue.copyWith(text: newValue.text.toUpperCase());
+                              }),
+                            ],
+                            style: const TextStyle(color: Colors.white),
+                            // Usamos copyWith para añadir el counterText vacío a tu diseño base
+                            decoration: buildDecor("TAG", Icons.tag).copyWith(
+                              counterText: "",
+                            )
+                        )
+                    ),
                   ],
                 ),
                 const SizedBox(height: 15),
@@ -260,6 +287,15 @@ class _ProfileViewState extends State<ProfileView> {
                         "leaguePoints": int.tryParse(lpController.text) ?? 0,
                         "profileIconId": int.tryParse(iconController.text) ?? 1,
                       };
+
+                      if (tagController.text.length != 3) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("El Tag debe tener exactamente 3 letras"), backgroundColor: Colors.orange)
+                        );
+
+                        setStateForm(() => isLoading = false);
+                        return;
+                      }
 
                       // 2. Llamamos al endpoint nuevo (linkManualAccount)
                       bool success = await ApiService.createDevPlayer(manualData);
@@ -1322,9 +1358,15 @@ class _TeamViewState extends State<TeamView> {
             ),
             TextField(
                 controller: tagCtrl,
+                maxLength: 3, // 1. Límite visual de 3 caracteres
+                inputFormatters: [
+                  // 2. Expresión regular que SOLO permite letras (mayúsculas y minúsculas)
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z]')),
+                ],
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                     labelText: "Tag (3 letras)",
+                    counterText: "",
                     labelStyle: TextStyle(color: Colors.grey),
                     enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
                     focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFD32F2F)))
@@ -1348,8 +1390,15 @@ class _TeamViewState extends State<TeamView> {
                 return;
               }
 
+              if (tagCtrl.text.length != 3) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("El Tag debe tener exactamente 3 letras"), backgroundColor: Colors.orange)
+                );
+                return;
+              }
+
               // 2. Llamada al Backend
-              bool success = await ApiService.createTeam(nameCtrl.text, tagCtrl.text, "EUW");
+              bool success = await ApiService.createTeam(nameCtrl.text, tagCtrl.text.toUpperCase(), "EUW");
 
               // 3. Lógica de Respuesta
               if (success) {
@@ -1740,7 +1789,7 @@ class _TournamentViewState extends State<TournamentView> {
               final allList = snapshot.data!;
 
               // 1. EN CURSO
-              final activeTournaments = allList.where((t) => t['status'] == 'EN_CURSO').toList();
+              final activeTournaments = allList.where((t) => t['status'] == 'EN_CURSO' || t['status'] == 'CANCELADO').toList();
 
               // 2. FINALIZADOS (Hall of Fame)
               final finishedTournaments = allList.where((t) => t['status'] == 'FINALIZADO').toList();
@@ -1764,11 +1813,15 @@ class _TournamentViewState extends State<TournamentView> {
                       t['region'],
                       t['status'],
                       "Ronda ${t['currentRound'] ?? 1}",
-                      onTap: () {
+                      onTap: t['status'] == 'CANCELADO' ? null : () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => TournamentBracketScreen(tournamentId: t['id']),
+                            builder: (context) => TournamentBracketScreen(
+                                tournamentId: t['id'],
+                                isAdmin: _isAdmin,
+                                status: t['status']
+                            ),
                           ),
                         );
                       },

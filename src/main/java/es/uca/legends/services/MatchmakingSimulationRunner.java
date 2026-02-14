@@ -14,7 +14,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MatchmakingSimulationRunner implements CommandLineRunner {
 
-    private final MatchmakingService matchmakingService;
     private final TeamRepository teamRepository;
     private final TournamentRepository tournamentRepository;
     private final TournamentService tournamentService;

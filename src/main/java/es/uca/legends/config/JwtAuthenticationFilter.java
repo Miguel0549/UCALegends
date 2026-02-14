@@ -1,5 +1,6 @@
 package es.uca.legends.config;
 
+import es.uca.legends.repositories.TokenRepository;
 import es.uca.legends.services.JwtService;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.FilterChain;
@@ -22,6 +23,7 @@ import java.io.IOException;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final TokenRepository tokenRepository;
     private final UserDetailsService userDetailsService;
 
     @Override
@@ -43,22 +45,41 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 2. Extraer token
         jwt = authHeader.substring(7);
-        userEmail = jwtService.extraerEmail(jwt);
 
-        // 3. Si hay email y no está autenticado ya en el contexto
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+        try{
 
-            if (jwtService.isTokenValid(jwt, (es.uca.legends.entities.User) userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+            userEmail = jwtService.extraerEmail(jwt);
+
+            // 3. Si hay email y no está autenticado ya en el contexto
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+
+                boolean isTokenValidInDatabase = tokenRepository.findByJwtToken(jwt)
+                        .map(t -> !t.isExpirado() && !t.isRevocado())
+                        .orElse(false);
+
+                if (jwtService.isTokenValid(jwt, (es.uca.legends.entities.User) userDetails) && isTokenValidInDatabase) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             }
+
+        }catch ( ExpiredJwtException e){
+
+            tokenRepository.markSpecificTokenAsExpired(jwt);
+
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+
+            return;
+
         }
+
         filterChain.doFilter(request, response);
     }
 }

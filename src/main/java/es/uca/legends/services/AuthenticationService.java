@@ -5,6 +5,7 @@ import es.uca.legends.entities.Token;
 import es.uca.legends.entities.User;
 import es.uca.legends.repositories.TokenRepository;
 import es.uca.legends.repositories.UserRepository;
+import io.jsonwebtoken.ExpiredJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -79,15 +80,14 @@ public class AuthenticationService {
                 .build();
     }
 
-    public synchronized AuthenticationResponse refresh(String RefreshToken){
+    public synchronized AuthenticationResponse refresh(String RefreshToken) throws ExpiredJwtException {
 
-        System.out.println("------------------------------ REFRESH ---------------------------------------------------");
         Token refreshJwT = tokenRepository.findByJwtToken(RefreshToken).orElseThrow();
 
         if (refreshJwT.tipo != Token.TokenType.REFRESH)
             throw new RuntimeException("Tipo de Token invalido.");
 
-        if (refreshJwT.expirado || refreshJwT.revocado)
+        if (!jwtService.isTokenValid(refreshJwT.jwtToken,refreshJwT.user))
             throw new RuntimeException("Token invalido.");
 
         String accessToken = jwtService.generateToken(refreshJwT.user);

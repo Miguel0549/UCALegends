@@ -3,9 +3,11 @@ import es.uca.legends.dtos.AuthenticationRequest;
 import es.uca.legends.dtos.AuthenticationResponse;
 import es.uca.legends.dtos.RefreshTokenRequest;
 import es.uca.legends.entities.User;
+import es.uca.legends.repositories.TokenRepository;
 import es.uca.legends.repositories.UserRepository;
 import es.uca.legends.services.AuthenticationService;
 import es.uca.legends.services.JwtService;
+import feign.FeignException;
 import io.jsonwebtoken.ExpiredJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,7 @@ public class AuthenticationController {
     private final AuthenticationService service;
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final TokenRepository tokenRepository;
 
     @PostMapping("/register")
     public ResponseEntity<AuthenticationResponse> register(
@@ -50,7 +53,11 @@ public class AuthenticationController {
             String email = jwtService.extraerEmail(token);
             Optional<User> user = userRepository.findByEmail(email);
 
-            if (user.isEmpty() || !jwtService.isTokenValid(token, user.get())) {
+            boolean isTokenValidInDatabase = tokenRepository.findByJwtToken(token)
+                    .map(t -> !t.isExpirado() && !t.isRevocado())
+                    .orElse(false);
+
+            if (user.isEmpty() || !jwtService.isTokenValid(token, user.get()) || !isTokenValidInDatabase) {
                 return ResponseEntity.status(403).build();
             }
 
@@ -58,13 +65,21 @@ public class AuthenticationController {
         } catch (Exception e) {
             return ResponseEntity.status(403).build();
         }
+
     }
 
     @PostMapping("/refresh-token")
     public ResponseEntity<AuthenticationResponse> refreshToken(
             @RequestBody RefreshTokenRequest request
     ){
-        return ResponseEntity.ok(service.refresh(request.getRefreshToken()));
+        try {
+            return ResponseEntity.ok(service.refresh(request.getRefreshToken()));
+        }catch ( ExpiredJwtException e ){
+
+            tokenRepository.markSpecificTokenAsExpired(request.getRefreshToken());
+            return ResponseEntity.status(403).build();
+        }
+
     }
 
 }

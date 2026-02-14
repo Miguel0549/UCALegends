@@ -2,11 +2,16 @@ package es.uca.legends.services;
 import es.uca.legends.entities.Tournament;
 import es.uca.legends.repositories.TournamentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -15,53 +20,41 @@ public class TournamentScheduler {
 
     private final TournamentRepository tournamentRepository;
     private final TournamentService tournamentService;
+    private final TaskScheduler taskScheduler;
 
-    // Se ejecuta cada 60000ms (1 minuto)
-    @Scheduled(fixedRate = 60000)
-    @Transactional
-    public void closeExpiredInscriptions() {
 
-        List<Tournament> toClose = tournamentRepository.findAllByStatusAndFechaInscripcionesBefore(
-                "ABIERTO",
-                LocalDateTime.now()
-        );
+    @EventListener(ApplicationReadyEvent.class)
+    public void reloadSchedulesOnStartup() {
+        System.out.println("Recuperando alarmas de torneos tras el arranque...");
 
-        if (toClose.isEmpty()) return;
+        List<Tournament> pendingTournaments = tournamentRepository.findAllByStatusIn(List.of("ABIERTO", "CERRADO"));
 
-        for (Tournament t : toClose) {
-            t.setStatus("CERRADO");
-            System.out.println("Cerrando inscripciones automáticamente para el torneo: " + t.getName());
+        for (Tournament t : pendingTournaments) {
+            scheduleTournamentEvents(t);
         }
-
-        tournamentRepository.saveAll(toClose);
     }
 
-    @Scheduled(fixedRate = 60000)
-    @Transactional
-    public void beginTournament() {
 
-        List<Tournament> toBegin = tournamentRepository.findAllByStatusAndFechaInicioBefore(
-                "CERRADO",
-                LocalDateTime.now()
-        );
+    public void scheduleTournamentEvents(Tournament tournament) {
 
-        if (toBegin.isEmpty()) return;
+        // 1. Programar el cierre de inscripciones
+        if (tournament.getFechaInscripciones() != null && "ABIERTO".equals(tournament.getStatus())) {
+            Instant closeInstant = tournament.getFechaInscripciones()
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant();
 
-        for (Tournament t : toBegin) {
-            try {
-                System.out.println("Iniciando generación de cuadro para el torneo: " + t.getName());
-
-                tournamentService.advanceToNextRound(t.getId());
-
-                System.out.println("Torneo {} iniciado con éxito :" + t.getName());
-
-            } catch (Exception e) {
-                System.out.println("Error al iniciar el torneo " + t.getName() + ": " + e.getMessage());
-                t.setStatus("CANCELADO");
-                tournamentRepository.save(t);
-            }
+            // Le pasamos el Instant directamente al scheduler
+            taskScheduler.schedule(() -> tournamentService.closeInscriptionsNow(tournament.getId()), closeInstant);
         }
 
-        tournamentRepository.saveAll(toBegin);
+        // 2. Programar el inicio del torneo
+        if (tournament.getFechaInicio() != null && ("ABIERTO".equals(tournament.getStatus()) || "CERRADO".equals(tournament.getStatus()))) {
+            Instant beginInstant = tournament.getFechaInicio()
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant();
+
+            taskScheduler.schedule(() -> tournamentService.beginTournamentNow(tournament.getId()), beginInstant);
+        }
     }
+
 }

@@ -19,21 +19,6 @@ public class MatchmakingController {
 
     private final TournamentService tournamentService;
 
-    // 1. GENERAR / AVANZAR RONDA (Solo Admin)
-    // Este endpoint sirve tanto para INICIAR el torneo (Ronda 1) como para pasar a la siguiente.
-    @PostMapping("/advance")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> advanceRound(@PathVariable Long tournamentId) {
-        try {
-            tournamentService.advanceToNextRound(tournamentId);
-            return ResponseEntity.ok("Ronda generada con éxito. ¡A jugar!");
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body("Error al avanzar ronda: " + e.getMessage());
-        }
-    }
-
-    // 2. VER LOS PARTIDOS DE LA RONDA ACTUAL
-    // Para que los usuarios sepan contra quién juegan
     @GetMapping("/current")
     public ResponseEntity<?> getCurrentRoundMatches(@PathVariable Long tournamentId) {
         try {

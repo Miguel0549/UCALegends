@@ -1,12 +1,10 @@
 package es.uca.legends.services;
 import es.uca.legends.dtos.CreateTeamRequest;
-import es.uca.legends.entities.Player;
-import es.uca.legends.entities.Team;
-import es.uca.legends.entities.TeamJoinRequest;
-import es.uca.legends.entities.User;
+import es.uca.legends.entities.*;
 import es.uca.legends.repositories.PlayerRepository;
 import es.uca.legends.repositories.TeamJoinRequestRepository;
 import es.uca.legends.repositories.TeamRepository;
+import es.uca.legends.repositories.TournamentRegistrationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +21,7 @@ public class TeamService {
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
     private final TeamJoinRequestRepository requestRepository;
+    private final TournamentRegistrationRepository tournamentRegistrationRepository;
 
     @Transactional
     public Team createTeam(User user, CreateTeamRequest request) {
@@ -121,38 +120,6 @@ public class TeamService {
     }
 
     @Transactional
-    public void joinTeam(User user, Long teamId) {
-        Player currentPlayer = user.getPlayer();
-
-        if (currentPlayer == null) {
-            throw new RuntimeException("No tienes perfil de jugador.");
-        }
-
-        if (currentPlayer.getTeam() != null) {
-            throw new RuntimeException("Ya estás en un equipo. Sal primero para unirte a otro.");
-        }
-
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new RuntimeException("El equipo no existe."));
-
-        if ( !currentPlayer.getRegion().equals(team.getRegion())){
-            throw new RuntimeException("Debes pertenecer a la region " + team.getRegion() + " para ingresar en este equipo");
-        }
-
-        if (team.getMembers().size() >= 5) throw new RuntimeException("Equipo lleno");
-
-        currentPlayer.setTeam(team);
-        playerRepository.save(currentPlayer);
-
-        if (team.getMembers() == null) {
-            team.setMembers(new ArrayList<>());
-        }
-        team.getMembers().add(currentPlayer);
-
-        updateTeamDivision(team);
-    }
-
-    @Transactional
     public void leaveTeam(User user) {
         Player currentPlayer = user.getPlayer();
 
@@ -164,6 +131,16 @@ public class TeamService {
 
         if (team.getLeader().getId().equals(currentPlayer.getId())) {
             throw new RuntimeException("Eres el líder. Debes nombrar otro líder o disolver el equipo.");
+        }
+
+        if (tournamentRegistrationRepository.isTeamPlayingActiveTournament(team)) {
+            throw new RuntimeException("No puedes abandonar el equipo ahora mismo. Estáis participando en un torneo en curso.");
+        }
+
+        List<TournamentRegistration> pendingRegistrations = tournamentRegistrationRepository.findPendingRegistrationsByTeam(team);
+
+        if (!pendingRegistrations.isEmpty()) {
+            tournamentRegistrationRepository.deleteAll(pendingRegistrations);
         }
 
         currentPlayer.setTeam(null);

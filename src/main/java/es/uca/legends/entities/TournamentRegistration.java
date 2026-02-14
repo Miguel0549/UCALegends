@@ -34,4 +34,8 @@ public class TournamentRegistration {
     @Column(name = "HasReceivedBye")
     private Boolean hasReceivedBye = false;
 
+    @Builder.Default
+    @Column(name = "HasFinishedTournament")
+    private Boolean hasFinishedTournament = false;
+
 }

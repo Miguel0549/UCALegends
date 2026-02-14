@@ -17,7 +17,7 @@ public class TokenCleanupService {
         tokenRepository.deleteAllExpiredOrRevokedTokens();
         System.out.println("Limpieza de tokens finalizada."); // Log para que lo veas en consola
     }
-
+    /*
     @Scheduled(cron = "0 0 * * * *",zone = "Europe/Madrid")
     public void cleanExpiredTokens() {
         System.out.println("Iniciando tarea de limpieza de tokens caducados...");
@@ -26,4 +26,6 @@ public class TokenCleanupService {
 
         System.out.println("Limpieza finalizada. Tokens expirados marcados: " + updatedTokens);
     }
+
+     */
 }

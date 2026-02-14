@@ -19,4 +19,5 @@ public interface TournamentRepository extends JpaRepository<Tournament,Long> {
     List<Tournament> findByStatusAndRegion(String status, String region);
     List<Tournament> findByStatus(String status);
 
+    List<Tournament> findAllByStatusIn(List<String> status);
 }

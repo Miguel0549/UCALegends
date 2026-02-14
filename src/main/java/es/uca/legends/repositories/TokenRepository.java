@@ -31,5 +31,10 @@ public interface TokenRepository extends JpaRepository<Token,Long> {
     @Query("UPDATE Token t SET t.expirado= true WHERE t.expirado = false AND t.fechaExpiracion <= :now")
     int markTokensAsExpired(@Param("now") LocalDateTime now);
 
+    @Modifying
+    @Transactional
+    @Query("UPDATE Token t SET t.expirado = true, t.revocado = true WHERE t.jwtToken = :jwt")
+    void markSpecificTokenAsExpired(String jwt);
+
     Optional<Token> findByJwtToken(String token);
 }

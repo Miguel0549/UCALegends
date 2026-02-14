@@ -1,10 +1,33 @@
 import 'package:flutter/material.dart';
 import 'api_service.dart';
 
-class TournamentBracketScreen extends StatelessWidget {
+// 1. CAMBIO A STATEFUL WIDGET PARA PODER REFRESCAR LA PANTALLA
+class TournamentBracketScreen extends StatefulWidget {
   final int tournamentId;
+  final bool isAdmin;
+  final String status;
 
-  const TournamentBracketScreen({super.key, required this.tournamentId});
+  const TournamentBracketScreen({super.key, required this.tournamentId,this.isAdmin = false, required this.status});
+
+  @override
+  State<TournamentBracketScreen> createState() => _TournamentBracketScreenState();
+}
+
+class _TournamentBracketScreenState extends State<TournamentBracketScreen> {
+  late Future<List<dynamic>> _matchesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMatches(); // Cargamos los datos por primera vez
+  }
+
+  // Función maestra para refrescar el bracket
+  void _loadMatches() {
+    setState(() {
+      _matchesFuture = ApiService.getTournamentMatches(widget.tournamentId);
+    });
+  }
 
   Map<int, List<dynamic>> _groupMatchesByRound(List<dynamic> matches) {
     Map<int, List<dynamic>> grouped = {};
@@ -21,22 +44,14 @@ class TournamentBracketScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 1. FONDO CON GRADIENTE GAMING
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF13151A), // Azul muy oscuro
-              Color(0xFF090A0C), // Casi negro
-            ],
-          ),
+          // ... (tu gradiente actual) ...
         ),
         child: SafeArea(
           child: Column(
             children: [
-              // APP BAR CUSTOM
+              // APP BAR ACTUALIZADA
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -57,15 +72,26 @@ class TournamentBracketScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(width: 48), // Balance para centrar el título
+                    // BOTÓN DE REFRESCAR (Siempre visible)
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white54),
+                      onPressed: _loadMatches,
+                    ),
+                    // 2. BOTÓN DE CANCELAR (Solo para ADMIN)
+                    if (widget.isAdmin && widget.status != 'CANCELADO' && widget.status != 'FINALIZADO')
+                      IconButton(
+                        icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                        onPressed: () => _showCancelTournamentDialog(context),
+                        tooltip: "Cancelar Torneo",
+                      ),
                   ],
                 ),
               ),
 
-              // CONTENIDO DEL BRACKET
+              // CONTENIDO
               Expanded(
                 child: FutureBuilder<List<dynamic>>(
-                  future: ApiService.getTournamentMatches(tournamentId),
+                  future: _matchesFuture, // Usamos la variable de estado
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator(color: Color(0xFFC9AA71)));
@@ -85,7 +111,7 @@ class TournamentBracketScreen extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: roundKeys.map((roundNum) {
-                          return _buildRoundColumn(roundNum, rounds[roundNum]!, context);
+                          return _buildRoundColumn(roundNum, rounds[roundNum]!);
                         }).toList(),
                       ),
                     );
@@ -99,16 +125,13 @@ class TournamentBracketScreen extends StatelessWidget {
     );
   }
 
-  // --- WIDGETS DE LA UI RE-DISEÑADOS ---
-
-  Widget _buildRoundColumn(int roundNum, List<dynamic> matches, BuildContext context) {
+  Widget _buildRoundColumn(int roundNum, List<dynamic> matches) {
     return Container(
       width: 280,
-      margin: const EdgeInsets.only(right: 48), // Más espacio entre rondas
+      margin: const EdgeInsets.only(right: 48),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // CABECERA DE RONDA ESTILO "BADGE"
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
             decoration: BoxDecoration(
@@ -118,23 +141,17 @@ class TournamentBracketScreen extends StatelessWidget {
             ),
             child: Text(
               "RONDA $roundNum",
-              style: const TextStyle(
-                color: Color(0xFFFF5252),
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
+              style: const TextStyle(color: Color(0xFFFF5252), fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2),
             ),
           ),
           const SizedBox(height: 32),
-          // LISTA DE PARTIDOS
-          ...matches.map((match) => _buildMatchCard(match, context)).toList(),
+          ...matches.map((match) => _buildMatchCard(match)).toList(),
         ],
       ),
     );
   }
 
-  Widget _buildMatchCard(Map<String, dynamic> match, BuildContext context) {
+  Widget _buildMatchCard(Map<String, dynamic> match) {
     final teamA = match['teamA'];
     final teamB = match['teamB'];
     final winner = match['winner'];
@@ -142,6 +159,9 @@ class TournamentBracketScreen extends StatelessWidget {
 
     String nameA = teamA != null ? teamA['name'] : 'TBD';
     String nameB = teamB != null ? teamB['name'] : 'TBD';
+
+    String tagA = teamA != null ? teamA['tag'] : '?';
+    String tagB = teamB != null ? teamB['tag'] : '?';
 
     int? winnerId = winner != null ? winner['id'] : null;
     int? idA = teamA != null ? teamA['id'] : null;
@@ -152,28 +172,18 @@ class TournamentBracketScreen extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 32),
       decoration: BoxDecoration(
-        // Fondo de la tarjeta con ligero gradiente
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF1E2329),
-            const Color(0xFF16191D),
-          ],
+          colors: [Color(0xFF1E2329), Color(0xFF16191D)],
         ),
         borderRadius: BorderRadius.circular(12),
-        // Borde dorado sutil si está pendiente, gris si terminó
         border: Border.all(
           color: isFinished ? Colors.white12 : const Color(0xFFC9AA71).withOpacity(0.5),
           width: 1.5,
         ),
-        // Sombra suave para dar relieve
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5)),
         ],
       ),
       child: Material(
@@ -182,7 +192,7 @@ class TournamentBracketScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           onTap: () {
             if (!isFinished && teamA != null && teamB != null) {
-              _showReportDialog(context, match['id'], nameA, nameB);
+              _showReportDialog(match['id'], nameA, nameB);
             }
           },
           child: Stack(
@@ -190,15 +200,11 @@ class TournamentBracketScreen extends StatelessWidget {
             children: [
               Column(
                 children: [
-                  // EQUIPO A
-                  _buildTeamRow(nameA, isWinner: winnerId == idA && isFinished, isFinished: isFinished, isTop: true),
-                  // LINEA DIVISORIA
+                  _buildTeamRow(nameA,tagA, isWinner: winnerId == idA && isFinished, isFinished: isFinished, isTop: true),
                   Divider(height: 1, color: Colors.white.withOpacity(0.05)),
-                  // EQUIPO B
-                  _buildTeamRow(nameB, isWinner: winnerId == idB && isFinished, isFinished: isFinished, isTop: false),
+                  _buildTeamRow(nameB,tagB, isWinner: winnerId == idB && isFinished, isFinished: isFinished, isTop: false),
                 ],
               ),
-              // INSIGNIA CENTRAL "VS"
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
@@ -208,11 +214,7 @@ class TournamentBracketScreen extends StatelessWidget {
                 ),
                 child: Text(
                   isFinished ? "FIN" : "VS",
-                  style: TextStyle(
-                    color: isFinished ? Colors.grey : const Color(0xFFC9AA71),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(color: isFinished ? Colors.grey : const Color(0xFFC9AA71), fontSize: 10, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -222,22 +224,17 @@ class TournamentBracketScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTeamRow(String teamName, {required bool isWinner, required bool isFinished, required bool isTop}) {
-    // Si el partido terminó y NO es el ganador, lo atenuamos mucho.
+  Widget _buildTeamRow(String teamName, String teamTag, {required bool isWinner, required bool isFinished, required bool isTop}) {
     bool isLoser = isFinished && !isWinner;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         color: isWinner ? Colors.white.withOpacity(0.03) : Colors.transparent,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(isTop ? 12 : 0),
-          bottom: Radius.circular(!isTop ? 12 : 0),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(isTop ? 12 : 0), bottom: Radius.circular(!isTop ? 12 : 0)),
       ),
       child: Row(
         children: [
-          // AVATAR DEL EQUIPO (Círculo con la inicial)
           Container(
             width: 28,
             height: 28,
@@ -248,17 +245,12 @@ class TournamentBracketScreen extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                teamName != 'TBD' ? teamName[0].toUpperCase() : '?',
-                style: TextStyle(
-                  color: isLoser ? Colors.grey[600] : Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+                teamName != 'TBD' ? teamTag : '?',
+                style: TextStyle(color: isLoser ? Colors.grey[600] : Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
               ),
             ),
           ),
           const SizedBox(width: 12),
-          // NOMBRE DEL EQUIPO
           Expanded(
             child: Text(
               teamName,
@@ -270,71 +262,171 @@ class TournamentBracketScreen extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          // ICONO DE VICTORIA (Trofecito o check)
-          if (isWinner)
-            const Icon(Icons.emoji_events, color: Color(0xFFC9AA71), size: 18),
+          if (isWinner) const Icon(Icons.emoji_events, color: Color(0xFFC9AA71), size: 18),
         ],
       ),
     );
   }
 
-  void _showReportDialog(BuildContext context, int matchId, String teamA, String teamB) {
+  void _showReportDialog(int matchId, String teamA, String teamB) {
     final TextEditingController matchIdController = TextEditingController();
 
+    // CAMBIAMOS showDialog POR showModalBottomSheet
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Permite que el panel suba con el teclado
+      backgroundColor: Colors.transparent, // Para poder redondear los bordes superiores
+      builder: (bottomSheetContext) {
+        return Padding(
+          // ¡ESTA ES LA MAGIA ABSOLUTA!
+          // Le da al panel un margen inferior exactamente igual al alto del teclado
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24.0),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(top: BorderSide(color: Color(0xFFC9AA71), width: 2)), // Un toque dorado eSports
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min, // Solo ocupa el espacio necesario
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- TÍTULO ---
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Reportar Resultado", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                        onPressed: () => Navigator.pop(bottomSheetContext),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // --- CONTENIDO ---
+                  Center(child: Text("$teamA  VS  $teamB", style: const TextStyle(color: Color(0xFFC9AA71), fontWeight: FontWeight.bold, fontSize: 18))),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Introduce el ID de la partida de Riot Games para verificar el ganador automáticamente.",
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: matchIdController,
+                    style: const TextStyle(color: Colors.white),
+                    // Al tocar, el teclado empujará todo el panel hacia arriba
+                    decoration: const InputDecoration(
+                      hintText: "Ej: EUW1_1234567890",
+                      hintStyle: TextStyle(color: Colors.white30),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFD32F2F))),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFC9AA71))),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // --- BOTÓN PRINCIPAL ---
+                  SizedBox(
+                    width: double.infinity, // Botón ancho para que sea fácil de pulsar
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD32F2F),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        String riotId = matchIdController.text.trim();
+                        if (riotId.isEmpty) return;
+
+                        Navigator.pop(bottomSheetContext); // Cerramos el panel inferior
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Procesando resultado..."))
+                        );
+
+                        String? result = await ApiService.reportMatchResult(matchId, riotId);
+
+                        if (!mounted) return;
+
+                        if (result == "success") {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Resultado verificado con éxito", style: TextStyle(color: Colors.green)))
+                          );
+                          _loadMatches(); // Refrescamos la pantalla
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(result ?? "Error al procesar"), backgroundColor: Colors.red)
+                          );
+                        }
+                      },
+                      child: const Text("VERIFICAR RESULTADO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showCancelTournamentDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text("Reportar Resultado", style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+          title: const Row(
             children: [
-              Text("$teamA  VS  $teamB", style: const TextStyle(color: Color(0xFFC9AA71), fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              const Text("Introduce el ID de la partida de Riot Games para verificar el ganador automáticamente.",
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: matchIdController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  hintText: "Ej: EUW1_1234567890",
-                  hintStyle: TextStyle(color: Colors.white30),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFD32F2F))),
-                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFC9AA71))),
-                ),
-              ),
+              Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+              SizedBox(width: 10),
+              Text("¡Peligro!", style: TextStyle(color: Colors.white)),
             ],
+          ),
+          content: const Text(
+            "¿Estás seguro de que deseas cancelar este torneo de forma permanente? Esta acción no se puede deshacer.",
+            style: TextStyle(color: Colors.grey),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("VOLVER", style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () async {
-                String riotId = matchIdController.text.trim();
-                if (riotId.isEmpty) return;
+                Navigator.pop(dialogContext); // Cerramos el modal
 
-                Navigator.pop(context); // Cerramos el diálogo primero
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Cancelando torneo..."))
+                );
 
-                // Mostramos un loading de mentira (opcional)
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Procesando resultado...")));
+                String? result = await ApiService.cancelTournament(widget.tournamentId);
 
-                // Llamamos al backend
-                String? result = await ApiService.reportMatchResult(matchId, riotId);
+                if (!mounted) return;
 
                 if (result == "success") {
-                  // TODO: Aquí deberías recargar la pantalla para ver el ganador y la nueva ronda si se generó
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Resultado verificado con éxito", style: TextStyle(color: Colors.green))));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Torneo cancelado con éxito", style: TextStyle(color: Colors.white)),
+                        backgroundColor: Colors.red,
+                      )
+                  );
+                  // Te devuelve a la pantalla anterior porque el torneo ya no es jugable
+                  Navigator.pop(context);
                 } else {
-                  // El backend nos dirá si no somos el líder
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result ?? "Error"), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(result ?? "Error al cancelar"), backgroundColor: Colors.red)
+                  );
                 }
               },
-              child: const Text("VERIFICAR GANADOR", style: TextStyle(color: Colors.white)),
+              child: const Text("CANCELAR TORNEO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         );

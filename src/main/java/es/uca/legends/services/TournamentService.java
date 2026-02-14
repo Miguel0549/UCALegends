@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -22,21 +23,7 @@ public class TournamentService {
     private final TournamentRegistrationRepository registrationRepository;
     private final PlayerRepository playerRepository;
     private final MatchRepository matchRepository;
-    private final MatchmakingService matchmakingService;
 
-    @Transactional
-    public Tournament createTournament(Tournament tournament) {
-        if (tournament.getStatus() == null) {
-            tournament.setStatus("ABIERTO");
-        }
-        // Aquí podrías validar que FechaInicio sea posterior a FechaInscripciones
-        if (tournament.getFechaInicio() != null && tournament.getFechaInscripciones() != null) {
-            if (tournament.getFechaInicio().isBefore(tournament.getFechaInscripciones())) {
-                throw new RuntimeException("La fecha de inicio no puede ser anterior al cierre de inscripciones.");
-            }
-        }
-        return tournamentRepository.save(tournament);
-    }
 
     @Transactional
     public void deleteTournament(Long tournamentId) {
@@ -135,23 +122,59 @@ public class TournamentService {
         registrationRepository.delete(registration);
     }
 
-    @Transactional
-    public void updateTournamentStatus(Long tournamentId, String newStatus) {
-        Tournament tournament = tournamentRepository.findById(tournamentId)
+
+    // Método auxiliar para obtener ganadores
+
+    public List<Match> getCurrentRoundMatches(Long tournamentId) {
+        Tournament t = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new RuntimeException("Torneo no encontrado"));
 
-        String currentStatus = tournament.getStatus();
+        return matchRepository.findByTournamentAndRound(t, t.getCurrentRound());
+    }
 
-        if ("EN_CURSO".equals(newStatus) && !"CERRADO".equals(currentStatus)) {
-            throw new RuntimeException("Debes cerrar las inscripciones antes de iniciar el torneo.");
-        }
+    public List<TournamentHistoryDto> getTournamentHistory(String region) {
+        // Buscamos solo los FINALIZADOS de esa región
+        List<Tournament> tournaments = tournamentRepository.findByStatusAndRegion("FINALIZADO", region);
 
-        if ("FINALIZADO".equals(newStatus) && !"EN_CURSO".equals(currentStatus)) {
-            throw new RuntimeException("El torneo debe estar en curso para poder finalizarlo.");
-        }
+        // Convertimos la lista de Entidades a lista de DTOs
+        return tournaments.stream()
+                .map(t -> TournamentHistoryDto.builder()
+                        .tournamentName(t.getName())
+                        .fechaInicio(t.getFechaInicio())
+                        .region(t.getRegion())
+                        // Usamos un ternario por seguridad (si winner fuera null por algún bug antiguo)
+                        .winnerName(t.getWinner() != null ? t.getWinner().getName() : "Sin Ganador")
+                        .build())
+                .toList();
+    }
 
-        tournament.setStatus(newStatus);
-        tournamentRepository.save(tournament);
+
+    @Transactional
+    public void closeInscriptionsNow(Long tournamentId) {
+        tournamentRepository.findById(tournamentId).ifPresent(t -> {
+            // Comprobamos el estado por si un Admin lo canceló a mano antes de tiempo
+            if ("ABIERTO".equals(t.getStatus())) {
+                t.setStatus("CERRADO");
+                System.out.println("Inscripciones cerradas automáticamente para: " + t.getName());
+                tournamentRepository.save(t);
+            }
+        });
+    }
+
+    @Transactional
+    public void beginTournamentNow(Long tournamentId) {
+        tournamentRepository.findById(tournamentId).ifPresent(t -> {
+            if ("CERRADO".equals(t.getStatus())) {
+                try {
+                    advanceToNextRound(t.getId());
+                    System.out.println("Torneo iniciado con éxito: " + t.getName());
+                } catch (Exception e) {
+                    System.out.println("Cancelando por falta de equipos: " + t.getName());
+                    t.setStatus("CANCELADO");
+                    tournamentRepository.save(t);
+                }
+            }
+        });
     }
 
     @Transactional
@@ -182,7 +205,9 @@ public class TournamentService {
         if (tournament.getCurrentRound() == 0) {
             // CASO ESPECIAL: Si es la ronda 0, pasamos a Ronda 1 con TODOS los inscritos
             winners = registrationRepository.findTeamsByTournamentId(tournamentId);
-            if ( winners.isEmpty() || winners.size() < 5 ) throw new RuntimeException("No hay equipos suficientes para empezar el torneo");
+            if ( winners.isEmpty() || winners.size() < 4 ){
+                throw new RuntimeException("No hay equipos suficientes para empezar el torneo");
+            }
             tournament.setStatus("EN_CURSO");
         } else {
             // CASO NORMAL: Buscamos los ganadores de la ronda que acaba de terminar
@@ -206,12 +231,11 @@ public class TournamentService {
         tournament.setCurrentRound(nextRound);
 
         // 4. Generar los cruces usando tu MatchmakingService
-        matchmakingService.generateMatches(tournament, winners, nextRound);
+        generateMatches(tournament, winners, nextRound);
 
         tournamentRepository.save(tournament);
     }
 
-    // Método auxiliar para obtener ganadores
     private List<Team> getWinnersOfRound(Tournament tournament, int round) {
         List<Match> matches = matchRepository.findByTournamentAndRound(tournament, round);
         List<Team> winners = new ArrayList<>();
@@ -228,26 +252,96 @@ public class TournamentService {
         return winners;
     }
 
-    public List<Match> getCurrentRoundMatches(Long tournamentId) {
-        Tournament t = tournamentRepository.findById(tournamentId)
-                .orElseThrow(() -> new RuntimeException("Torneo no encontrado"));
+    @Transactional
+    public List<Match> generateMatches(Tournament tournament, List<Team> teamsInput, int roundNumber) {
 
-        return matchRepository.findByTournamentAndRound(t, t.getCurrentRound());
+        if (teamsInput.size() < 2) {
+            return new ArrayList<>();
+        }
+
+        List<Team> activeTeams = new ArrayList<>(teamsInput);
+
+        activeTeams.sort(Comparator.comparingDouble(Team::getAverageScore).reversed());
+
+        List<Match> newMatches = new ArrayList<>();
+
+        // 2. GESTIÓN DEL "BYE" (Si el número de equipos es IMPAR)
+        if (activeTeams.size() % 2 != 0) {
+            Team byeTeam = findByeCandidate(tournament, activeTeams);
+
+            // Creamos el partido "falso" de victoria automática
+            Match byeMatch = Match.builder()
+                    .tournament(tournament)
+                    .teamA(byeTeam)
+                    .teamB(null)
+                    .round(roundNumber)
+                    .riotMatchId("EUW_"+tournament.getId() + "_" + byeTeam.getId() + "_" + "BYE_" + roundNumber)
+                    .matchDate(LocalDateTime.now())
+                    .winner(byeTeam)   // Gana directamente
+                    .status("FINISHED")
+                    .build();
+
+            newMatches.add(byeMatch);
+
+            // IMPORTANTE: Marcar en la BD que ya gastó su Bye
+            markTeamAsByeReceived(tournament, byeTeam);
+
+            // Lo quitamos de la lista para no emparejarlo con nadie más
+            activeTeams.remove(byeTeam);
+        }
+
+        // 3. EMPAREJAMIENTO DEL RESTO (Sistema Escalera)
+        // Como ya quitamos el impar, ahora la lista es PAR.
+        for (int i = 0; i < activeTeams.size(); i += 2) {
+            Team team1 = activeTeams.get(i);
+            Team team2 = activeTeams.get(i + 1);
+
+            Match match = Match.builder()
+                    .tournament(tournament)
+                    .teamA(team1)
+                    .teamB(team2)
+                    .round(roundNumber)
+                    .riotMatchId("EUW_"+tournament.getId() + "_" + team1.getId() + "_" + team2.getId() + "_" + roundNumber)
+                    .matchDate(null)
+                    .status("SCHEDULED")
+                    .build();
+
+            newMatches.add(match);
+        }
+
+        return matchRepository.saveAll(newMatches);
     }
 
-    public List<TournamentHistoryDto> getTournamentHistory(String region) {
-        // Buscamos solo los FINALIZADOS de esa región
-        List<Tournament> tournaments = tournamentRepository.findByStatusAndRegion("FINALIZADO", region);
+    // --- MÉTODOS AUXILIARES ---
 
-        // Convertimos la lista de Entidades a lista de DTOs
-        return tournaments.stream()
-                .map(t -> TournamentHistoryDto.builder()
-                        .tournamentName(t.getName())
-                        .fechaInicio(t.getFechaInicio())
-                        .region(t.getRegion())
-                        // Usamos un ternario por seguridad (si winner fuera null por algún bug antiguo)
-                        .winnerName(t.getWinner() != null ? t.getWinner().getName() : "Sin Ganador")
-                        .build())
-                .toList();
+    /**
+     * Busca al peor equipo disponible que NO haya tenido un Bye todavía.
+     */
+    private Team findByeCandidate(Tournament tournament, List<Team> teams) {
+        // Recorremos la lista AL REVÉS (desde el peor ELO hacia el mejor)
+        for (int i = teams.size() - 1; i >= 0; i--) {
+            Team candidate = teams.get(i);
+
+            // Consultamos si ya tuvo Bye
+            boolean alreadyHadBye = registrationRepository
+                    .hasReceivedBye(tournament.getId(), candidate.getId());
+
+            if (!alreadyHadBye) {
+                return candidate; // ¡Encontrado!
+            }
+        }
+
+        // EDGE CASE: Si todos los equipos vivos ya tuvieron un Bye (muy raro,
+        // solo pasa en formatos de liga o finales raras), le damos el Bye al último (el peor).
+        return teams.getLast();
+    }
+
+    private void markTeamAsByeReceived(Tournament tournament, Team team) {
+        TournamentRegistration reg = registrationRepository
+                .findByTournamentIdAndTeamId(tournament.getId(), team.getId())
+                .orElseThrow();
+
+        reg.setHasReceivedBye(true);
+        registrationRepository.save(reg);
     }
 }

@@ -597,6 +597,17 @@ class ApiService {
     return "Error de conexión";
   }
 
+  static Future<String?> cancelTournament(int tournamentId) async {
+    // Nota: Pasamos el status por Query Parameter (?status=CANCELADO) como pide tu backend
+    final response = await put('/tournaments/$tournamentId/status?status=CANCELADO', {});
+
+    if (response != null) {
+      if (response.statusCode == 200) return "success";
+      return response.body; // Mensaje de error del backend
+    }
+    return "Error de red";
+  }
+
   static Future<List<dynamic>> getTournamentMatches(int tournamentId) async {
     try {
       final response = await get('/tournaments/$tournamentId/matches');

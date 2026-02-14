@@ -2,25 +2,34 @@ package es.uca.legends.services;
 
 import es.uca.legends.entities.Match;
 import es.uca.legends.entities.Team;
+import es.uca.legends.entities.Tournament;
 import es.uca.legends.entities.User;
 import es.uca.legends.repositories.MatchRepository;
+import es.uca.legends.repositories.TournamentRegistrationRepository;
+import es.uca.legends.repositories.TournamentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class MatchService {
 
     private final MatchRepository matchRepository;
-
-    // Inyectamos TU servicio para cederle el control de las rondas
     private final TournamentService tournamentService;
+    private final TournamentRegistrationRepository tournamentRegistrationRepository;
 
     @Transactional
     public void reportMatchResult(Long matchId, String riotMatchId, User currentUser) {
+
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> new RuntimeException("Partida no encontrada"));
+
+        if ( match.getTournament().getStatus().equals("CANCELADO")){
+            throw new RuntimeException("No se pueden realizar acciones, el torneo ha sido cancelado.");
+        }
 
         if ("FINISHED".equals(match.getStatus())) {
             throw new RuntimeException("Esta partida ya ha finalizado.");
@@ -38,8 +47,11 @@ public class MatchService {
         Team simulatedWinner = Math.random() > 0.5 ? match.getTeamA() : match.getTeamB();
         if (match.getTeamB() == null) simulatedWinner = match.getTeamA(); // Fallback por si acaso
 
+        tournamentRegistrationRepository.setTeamOutOfTournament(match.getTournament(),(simulatedWinner == match.getTeamA()) ? match.getTeamB() : match.getTeamA());
+
         match.setRiotMatchId(riotMatchId);
         match.setWinner(simulatedWinner);
+        match.setMatchDate(LocalDateTime.now());
         match.setStatus("FINISHED");
         matchRepository.save(match);
 
