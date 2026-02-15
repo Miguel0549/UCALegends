@@ -5,9 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // ⚠️ IMPORTANTE: Usa 10.0.2.2 para Emulador Android.
-  // Si usas móvil físico, pon la IP de tu PC (ej: 192.168.1.35)
-  static const String baseUrl = 'http://192.168.77.91:8081/api';
+
+  static String baseUrl = 'http://85.87.134.186:8081/api';
 
   static const _storage = FlutterSecureStorage();
 
@@ -392,8 +391,7 @@ class ApiService {
       if (response.statusCode == 200) {
         return true;
       } else {
-        print("Error leaving team: ${response.body}");
-        return false;
+        throw Exception(response.body);
       }
     }
 
@@ -456,15 +454,15 @@ class ApiService {
 
   // 2. ECHAR A UN MIEMBRO (Solo Líder)
   static Future<bool> kickMember(int playerId) async {
-    try {
-      final response = await delete('/teams/kick/$playerId');
-      if ( response != null ) return response.statusCode == 200;
-      return false;
-
-    } catch (e) {
-      print("Excepción al expulsar: $e");
-      return false;
+    final response = await delete('/teams/kick/$playerId');
+    if ( response != null ){
+      if ( response.statusCode == 200 ) return true;
+      else {
+        throw Exception(response.body);
+      }
     }
+
+    return false;
   }
 
   // 3. OBTENER LISTA DE SOLICITUDES PENDIENTES (Solo Líder)
@@ -641,6 +639,23 @@ class ApiService {
       }
     } catch (_) {}
     return false;
+  }
+
+
+  static Future<List<dynamic>> loadNotificationHistory( int currentPlayerId) async {
+    try {
+      // Usa 10.0.2.2 si pruebas en emulador Android, o tu IP local (192.168...) si es dispositivo físico.
+      final response = await get("/notifications/$currentPlayerId");
+
+      if (response != null && response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data;
+      }
+    } catch (e) {
+      print("Error cargando historial de notificaciones: $e");
+      return [];
+    }
+    return [];
   }
 
 }

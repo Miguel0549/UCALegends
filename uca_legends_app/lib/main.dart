@@ -1,14 +1,18 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart'; // Para formatear fechas
 import 'api_service.dart'; // Importa el archivo que creamos arriba
 import 'splash_screen.dart';
 import 'HallOfFame.dart';
 import 'TournamentDeatailScreen.dart';
 import 'Tournament_Bracket_Screen.dart';
+import 'package:stomp_dart_client/stomp_dart_client.dart';
 
-void main() {
+void main(){
   runApp(LegendsApp());
 }
 
@@ -39,7 +43,8 @@ class LegendsApp extends StatelessWidget {
 
 
 class ProfileView extends StatefulWidget {
-  const ProfileView({super.key});
+  final Function(int?) onRiotAccountChanged;
+  const ProfileView({super.key,required this.onRiotAccountChanged});
 
   @override
   State<ProfileView> createState() => _ProfileViewState();
@@ -104,7 +109,10 @@ class _ProfileViewState extends State<ProfileView> {
                 padding: const EdgeInsets.all(16),
                 side: const BorderSide(color: Colors.red),
               ),
-              onPressed: () => _confirmUnlink(),
+              onPressed: () async {
+                _confirmUnlink();
+                widget.onRiotAccountChanged(null);
+              },
               icon: const Icon(Icons.link_off, color: Colors.red),
               label: const Text("DESVINCULAR RIOT ID", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             ),
@@ -301,7 +309,10 @@ class _ProfileViewState extends State<ProfileView> {
                       bool success = await ApiService.createDevPlayer(manualData);
 
                       if (success) {
-                        _refreshProfile(); // Recarga la pantalla principal
+                        _refreshProfile();
+                        final userData = await ApiService.getMe();
+                        int newPlayerId = userData?['player']['id'];
+                        widget.onRiotAccountChanged(newPlayerId);
                       } else {
                         setStateForm(() => isLoading = false);
                         if(context.mounted) {
@@ -451,10 +462,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      // 3. Éxito: Vamos directo a la App principal
+      final userData = await ApiService.getMe();
+      int loggedInPlayerId = userData?['player']['id'];
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
+        MaterialPageRoute(builder: (context) => MainScreen(currentPlayerId: loggedInPlayerId )),
             (route) => false, // Elimina el historial de navegación anterior
       );
     } else if (mounted) {
@@ -555,9 +567,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
+      final userData = await ApiService.getMe();
+      int loggedInPlayerId = userData?['player']['id'];
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const MainScreen())
+          MaterialPageRoute(builder: (context) => MainScreen(currentPlayerId: loggedInPlayerId))
       );
     }else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -583,7 +597,7 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const Icon(Icons.shield, size: 80, color: Color(0xFFD32F2F)),
             const SizedBox(height: 20),
-            const Text("UCALEGENDS ID", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            const Text("LEGENDS ID", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
             const SizedBox(height: 40),
             TextField(
               controller: _emailController,
@@ -628,7 +642,8 @@ class _LoginScreenState extends State<LoginScreen> {
 // PANTALLA PRINCIPAL
 // ==========================================
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final int currentPlayerId;
+  const MainScreen({super.key,required this.currentPlayerId});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -636,12 +651,100 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  int unreadCount = 0;
+  List<dynamic> notificationsList = [];
 
-  static const List<Widget> _widgetOptions = <Widget>[
-    TournamentView(), // CONECTADA A API
-    TeamView(),       // <--- AQUÍ estaba el "Próximamente", cámbialo por TeamView()
-    ProfileView(),
+  StompClient? stompClient;
+  int? _currentPlayerId;
+
+  List<Widget> get _widgetOptions =>  <Widget>[
+    TournamentView(),
+    TeamView(),
+    ProfileView(onRiotAccountChanged: updatePlayerIdStatus),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPlayerId = widget.currentPlayerId;
+    if (_currentPlayerId != null) {
+      _loadInitialData();
+      _connectStomp();
+    }
+  }
+
+  @override
+  void dispose() {
+    stompClient?.deactivate();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialData() async {
+    if (_currentPlayerId == null) return; // Seguridad extra
+
+    final data = await ApiService.loadNotificationHistory(_currentPlayerId!);
+
+    setState(() {
+      notificationsList = data;
+      unreadCount = notificationsList.where((n) => n['isRead'] == false || n['read'] == false).length;
+    });
+  }
+
+  void _connectStomp() {
+    if (_currentPlayerId == null) return;
+
+    // Si ya había una conexión (ej. cambió de cuenta), la cerramos primero
+    stompClient?.deactivate();
+
+    stompClient = StompClient(
+      config: StompConfig(
+        url: 'ws://85.87.134.186:8081/ws/websocket', // Acuérdate de arreglar el 403 en Spring Security
+        onConnect: _onStompConnect,
+        onWebSocketError: (dynamic error) => print("Error WS: $error"),
+      ),
+    );
+    stompClient!.activate();
+  }
+
+  void _onStompConnect(StompFrame frame) {
+    print('Conectado a Spring Boot STOMP!');
+    stompClient!.subscribe(
+      destination: '/topic/notifications/$_currentPlayerId',
+      callback: (StompFrame frame) {
+        if (frame.body != null) {
+          final newNotif = jsonDecode(frame.body!);
+          setState(() {
+            notificationsList.insert(0, newNotif);
+            unreadCount++;
+          });
+        }
+      },
+    );
+  }
+
+  void updatePlayerIdStatus(int? newPlayerId) {
+    setState(() {
+      _currentPlayerId = newPlayerId;
+    });
+
+    if (newPlayerId == null) {
+      // CASO: DESVINCULAR
+      print("Cuenta desvinculada. Cerrando WebSocket...");
+      stompClient?.deactivate();
+      stompClient = null;
+
+      // Limpiamos las notificaciones locales porque ya no es jugador
+      setState(() {
+        notificationsList.clear();
+        unreadCount = 0;
+      });
+    } else {
+      // CASO: VINCULAR
+      print("Cuenta vinculada (ID: $newPlayerId). Iniciando conexión...");
+      _loadInitialData();
+      _connectStomp();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -652,15 +755,81 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             const Icon(Icons.shield, color: Color(0xFFD32F2F)),
             const SizedBox(width: 8),
-            Text('UCALEGENDS CUP', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.white.withOpacity(0.9))),
+            Text('LEGENDS CUP', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.white.withOpacity(0.9))),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text(unreadCount.toString(), style: const TextStyle(color: Colors.white)),
+              backgroundColor: Colors.red,
+              child: const Icon(Icons.notifications, color: Colors.white),
+            ),
             onPressed: () {
-              ApiService.logout();
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => const LoginScreen()));
+              // Mostramos el panel inferior con StatefulBuilder para actualizarlo por dentro
+              showModalBottomSheet(
+                  context: context,
+                  backgroundColor: const Color(0xFF1E2328),
+                  shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(20))
+                  ),
+                  builder: (context) {
+                    return StatefulBuilder(
+                        builder: (context, setModalState) {
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            height: 400,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("Notificaciones", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                const Divider(color: Colors.grey),
+                                Expanded(
+                                  child: notificationsList.isEmpty
+                                      ? const Center(child: Text("No tienes notificaciones", style: TextStyle(color: Colors.grey)))
+                                      : ListView.builder(
+                                    itemCount: notificationsList.length,
+                                    itemBuilder: (context, index) {
+                                      final notif = notificationsList[index];
+                                      final bool isUnread = notif['isRead'] == false || notif['read'] == false;
+
+                                      return ListTile(
+                                        leading: Icon(
+                                            isUnread ? Icons.mark_email_unread : Icons.info_outline,
+                                            color: isUnread ? const Color(0xFFD32F2F) : Colors.grey
+                                        ),
+                                        // ¡CORREGIDO: minúsculas!
+                                        title: Text(notif['title'] ?? 'Aviso', style: TextStyle(color: Colors.white, fontWeight: isUnread ? FontWeight.bold : FontWeight.normal)),
+                                        subtitle: Text(notif['message'] ?? '', style: const TextStyle(color: Colors.grey)),
+                                        onTap: () {
+                                          if (isUnread) {
+                                            // 1. Avisamos al backend por STOMP de que ESTA notificación ha sido leída
+                                            stompClient?.send(
+                                              destination: '/app/read',
+                                              body: notif['id'].toString(), // Enviamos el ID de la notificación
+                                            );
+
+                                            // 2. Actualizamos la app
+                                            setState(() {
+                                              unreadCount--;
+                                              notificationsList[index]['isRead'] = true;
+                                              notificationsList[index]['read'] = true;
+                                            });
+                                            setModalState(() {}); // Refresca el panel visualmente
+                                          }
+                                        },
+                                      );
+                                    },
+                                  ),
+                                )
+                              ],
+                            ),
+                          );
+                        }
+                    );
+                  }
+              );
             },
           ),
         ],
@@ -980,10 +1149,20 @@ class _TeamViewState extends State<TeamView> {
                           ) ?? false;
 
                           if (confirm) {
-                            bool success = await ApiService.leaveTeam();
-                            if (success) {
-                              onRefresh(); // <--- RECARGA LA PANTALLA
+                            try{
+                              await ApiService.leaveTeam();
+                              onRefresh();
+                            }catch(e){
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(e.toString().replaceAll('Exception: ', '')),
+                                    backgroundColor: Colors.red, // Rojo para que quede claro que es un error
+                                  )
+                              );
+
                             }
+
                           }
                         },
                       ),
@@ -1242,20 +1421,31 @@ class _TeamViewState extends State<TeamView> {
               onPressed: () async {
                 Navigator.of(dialogContext).pop(); // Cerrar diálogo
 
-                // 1. Llamar a la API
-                // Asegúrate de que member['id'] es el ID del Player, no del User
-                bool success = await ApiService.kickMember(member['id']);
+                try{
 
-                if (success) {
-                  // 2. Refrescar la pantalla
+                  await ApiService.kickMember(member['id']);
+
+                  // 2. Si llegamos aquí, es que fue un éxito (status 200)
                   onRefresh();
                   ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("${member['riotIdName']} ha sido expulsado."))
+                      SnackBar(
+                        content: Text("${member['riotIdName']} ha sido expulsado."),
+                        backgroundColor: Colors.green, // Un toque visual extra
+                      )
                   );
-                } else {
+
+                }catch(e){
+
+                  String errorMsg = e.toString().replaceAll('Exception: ', '');
+
+                  // Mostramos el mensaje exacto que nos mandó Spring Boot
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Error al expulsar al jugador."))
+                      SnackBar(
+                        content: Text(errorMsg),
+                        backgroundColor: Colors.red, // Rojo para que quede claro que es un error
+                      )
                   );
+
                 }
               },
             ),

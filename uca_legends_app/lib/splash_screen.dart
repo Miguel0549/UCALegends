@@ -30,19 +30,22 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return; // Seguridad por si el widget se desmontó
 
     if (isValid) {
-      // TOKEN VALIDO -> HOME
+      final userData = await ApiService.getMe();
+      int loggedInPlayerId = userData?['player']['id'];
       Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const MainScreen())
+          MaterialPageRoute(builder: (context) => MainScreen(currentPlayerId: loggedInPlayerId))
       );
     } else {
 
       bool success = await ApiService.tryRefreshToken();
 
       if ( success){
+        final userData = await ApiService.getMe();
+        int loggedInPlayerId = userData?['player']['id'];
         Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const MainScreen())
+            MaterialPageRoute(builder: (context) => MainScreen(currentPlayerId: loggedInPlayerId))
         );
         return;
       }

@@ -23,6 +23,7 @@ public class TournamentService {
     private final TournamentRegistrationRepository registrationRepository;
     private final PlayerRepository playerRepository;
     private final MatchRepository matchRepository;
+    private final NotificationSenderService notificationSenderService;
 
 
     @Transactional
@@ -167,11 +168,13 @@ public class TournamentService {
             if ("CERRADO".equals(t.getStatus())) {
                 try {
                     advanceToNextRound(t.getId());
+                    notificationSenderService.notifyTournament(t.getId(),"Tournament update","¡El torneo " + t.getName() + " ha empezado!");
                     System.out.println("Torneo iniciado con éxito: " + t.getName());
                 } catch (Exception e) {
                     System.out.println("Cancelando por falta de equipos: " + t.getName());
                     t.setStatus("CANCELADO");
                     tournamentRepository.save(t);
+                    notificationSenderService.notifyTournament(t.getId(),"Tournament update","El torneo " + t.getName() + " ha sido cancelado. Razon : " + e.getMessage());
                 }
             }
         });

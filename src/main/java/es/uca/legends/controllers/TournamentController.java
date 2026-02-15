@@ -7,6 +7,7 @@ import es.uca.legends.entities.User;
 import es.uca.legends.repositories.MatchRepository;
 import es.uca.legends.repositories.TournamentRegistrationRepository;
 import es.uca.legends.repositories.TournamentRepository;
+import es.uca.legends.services.NotificationSenderService;
 import es.uca.legends.services.TournamentService;
 import es.uca.legends.services.TournamentUpdateFunctions;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class TournamentController {
     private final TournamentUpdateFunctions tournamentUpdateFunctions;
     private final TournamentService tournamentService;
     private final MatchRepository matchRepository;
+    private final NotificationSenderService notificationSenderService;
 
     // --- General ---
 
@@ -127,6 +129,7 @@ public class TournamentController {
             }
 
             tournamentUpdateFunctions.updateTournamentStatus(id, status);
+            if ( status.equals("CANCELADO")) notificationSenderService.notifyTournament(id,"Tournament update","El administrador a cancelado este torneo.");
             return ResponseEntity.ok("Estado del torneo actualizado a: " + status);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

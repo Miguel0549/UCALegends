@@ -22,6 +22,7 @@ public class TeamService {
     private final PlayerRepository playerRepository;
     private final TeamJoinRequestRepository requestRepository;
     private final TournamentRegistrationRepository tournamentRegistrationRepository;
+    private final NotificationSenderService notificationSenderService;
 
     @Transactional
     public Team createTeam(User user, CreateTeamRequest request) {
@@ -108,9 +109,12 @@ public class TeamService {
 
                 // Actualizar media (FIX de memoria incluido)
                 if (team.getMembers() == null) team.setMembers(new ArrayList<>());
+                notificationSenderService.notifyTeam(team.getId(),"Team update","¡" +newMember.getRiotIdName() + " se ha unido al equipo!");
                 team.getMembers().add(newMember);
                 updateTeamDivision(team);
                 teamRepository.save(team);
+
+
             }
         }else throw new RuntimeException("El jugador ya está en un equipo");
 
@@ -141,12 +145,14 @@ public class TeamService {
 
         if (!pendingRegistrations.isEmpty()) {
             tournamentRegistrationRepository.deleteAll(pendingRegistrations);
+            notificationSenderService.notifyTeam(team.getId(),"Team update","Se han cancelado todas las inscripciones activas de vuestro equipo ya que un intengrante a abandonado el equipo.");
         }
 
         currentPlayer.setTeam(null);
         playerRepository.save(currentPlayer);
         team.getMembers().remove(currentPlayer);
         updateTeamDivision(team);
+        notificationSenderService.notifyTeam(team.getId(),"Team update",currentPlayer.getRiotIdName() + " ha abandonado el equipo :(");
     }
 
     @Transactional
@@ -154,7 +160,7 @@ public class TeamService {
         Player leaderPlayer = user.getPlayer();
 
         if (leaderPlayer == null || leaderPlayer.getTeam() == null) {
-            throw new RuntimeException("No perteneces a ningún equipo.");
+            throw new RuntimeException("No perteneces a ningun equipo.");
         }
 
         Team team = leaderPlayer.getTeam();
@@ -164,7 +170,11 @@ public class TeamService {
         }
 
         if (leaderPlayer.getId().equals(playerIdToKick)) {
-            throw new RuntimeException("No puedes expulsarte a ti mismo. Usa la opción de 'Disolver equipo' o 'Salir'.");
+            throw new RuntimeException("No puedes expulsarte a ti mismo. Usa la opcion de 'Disolver equipo' o 'Salir'.");
+        }
+
+        if (tournamentRegistrationRepository.isTeamPlayingActiveTournament(team)) {
+            throw new RuntimeException("No puedes echar a nadie del equipo ahora mismo. Estáis participando en un torneo en curso.");
         }
 
         Player playerToKick = playerRepository.findById(playerIdToKick)
@@ -174,11 +184,20 @@ public class TeamService {
             throw new RuntimeException("Ese jugador no pertenece a tu equipo.");
         }
 
+        List<TournamentRegistration> pendingRegistrations = tournamentRegistrationRepository.findPendingRegistrationsByTeam(team);
+
+        if (!pendingRegistrations.isEmpty()) {
+            tournamentRegistrationRepository.deleteAll(pendingRegistrations);
+            notificationSenderService.notifyTeam(team.getId(),"Team update","Se han cancelado todas las inscripciones activas de vuestro equipo ya que un intengrante a abandonado el equipo.");
+        }
+
         // 5. Ejecutar la expulsión (Desvincular)
         team.getMembers().remove(playerToKick);
         playerToKick.setTeam(null);
         playerRepository.save(playerToKick);
         updateTeamDivision(team);
+
+        notificationSenderService.notifyTeam(team.getId(),"Team update",playerToKick.getRiotIdName() + " ha sido expulsado del equipo :(");
     }
 
     @Transactional
@@ -201,6 +220,8 @@ public class TeamService {
             member.setTeam(null);  // Rompemos la relación en el objeto Java
             playerRepository.save(member); // Actualizamos el estado del jugador
         }
+
+        notificationSenderService.notifyTeam(team.getId(),"Team update","El lider a disuelto el equipo");
 
         team.getMembers().clear();
 

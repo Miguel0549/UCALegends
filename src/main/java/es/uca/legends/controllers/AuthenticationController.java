@@ -40,6 +40,11 @@ public class AuthenticationController {
         return ResponseEntity.ok(service.authenticate(request));
     }
 
+    @GetMapping("/ping")
+    public ResponseEntity<Void> ping(){
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping("/verify")
     public ResponseEntity<Void> verify(@RequestHeader("Authorization") String authHeader) throws ExpiredJwtException {
 
